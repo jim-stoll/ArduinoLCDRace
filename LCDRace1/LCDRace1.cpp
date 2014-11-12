@@ -22,6 +22,7 @@ const int posYMin = 0;
 const int posYMax = 19;
 const int numLanes = 4;
 const int numPos = 20;
+const int maxPosNum = 19;
 const int maxLanePos = 19;
 const int minLanePos = 0;
 const int maxLaneNum = 3;
@@ -38,6 +39,26 @@ bool lanes[numLanes][numPos];
 unsigned long lastOncomingMillis = 0;
 bool gameOver = false;
 int points = 0;
+
+byte finishLine[8] = {
+  B00001,
+  B00001,
+  B00001,
+  B00001,
+  B00001,
+  B00001,
+  B00001,
+};
+
+byte finishLineOncoming[8] = {
+  B01000,
+  B00100,
+  B00010,
+  B00001,
+  B00010,
+  B00100,
+  B01000,
+};
 
 void initLanes() {
   for (int laneNum = 0; laneNum < numLanes; laneNum++) {
@@ -61,6 +82,8 @@ void setup() {
   pinMode(0, INPUT_PULLUP);
   aXPin = A1;
   aYPin = A0;
+  lcd.createChar(0, finishLine);
+  lcd.createChar(1, finishLineOncoming);
   lcd.begin(20,4);
   initGame();
 }
@@ -114,7 +137,15 @@ void printLanes() {
     for (int posNum = 0; posNum < numPos; posNum++) {
       if (lanes[laneNum][posNum]) {
         lcd.setCursor(maxLanePos - posNum, maxLaneNum - laneNum);
-        lcd.print(">");
+        if (posNum < maxPosNum) {
+        	lcd.print(">");
+        } else {
+        	lcd.write(byte(1));
+        }
+      } else {
+    	  if (posNum = maxPosNum) {
+    		  lcd.write(byte(0));
+    	  }
       }
     }
   }
@@ -174,7 +205,7 @@ bool checkForCollision() {
 }
 
 void checkForWin() {
-  if (posY == maxLanePos) {
+  if (posY == maxLanePos-1) {
     lcd.setCursor(0,0);
     lcd.print("WIN!! ");
     lcd.print(points);
