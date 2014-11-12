@@ -72,7 +72,7 @@ void initLanes() {
 
 void initGame() {
   lcd.clear();
-  posX = posXMin;
+  posX = random(numLanes);
   posY = posYMin;
   points = 0;
   initLanes();
@@ -199,6 +199,20 @@ bool checkForCollision() {
       lcd.setCursor(maxLanePos - posY, maxLaneNum - posX);
       lcd.print("X");
 
+      delay(500);
+      for (int t = 0; t < 3; t++) {
+      	lcd.setCursor(0,0);
+      	lcd.print("       ");
+        lcd.setCursor(maxLanePos - posY, maxLaneNum - posX);
+        lcd.print("X");
+     	delay(500);
+      	lcd.setCursor(0,0);
+      	lcd.print("WRECK!!");
+        lcd.setCursor(maxLanePos - posY, maxLaneNum - posX);
+        lcd.print("X");
+      	delay(500);
+      }
+      gameOver = true;
       return true;
     }// else {
 //      return false;
@@ -212,6 +226,15 @@ void checkForWin() {
     lcd.setCursor(0,0);
     lcd.print("WIN!! ");
     lcd.print(points);
+    delay(500);
+    for (int t = 0; t < 3; t++) {
+    	lcd.setCursor(0,0);
+    	lcd.print("     ");
+    	delay(250);
+    	lcd.setCursor(0,0);
+    	lcd.print("WIN!!");
+    	delay(500);
+    }
 
     gameOver = true;
   }
