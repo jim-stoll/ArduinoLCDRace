@@ -41,23 +41,25 @@ bool gameOver = false;
 int points = 0;
 
 byte finishLine[8] = {
-  B00001,
-  B00001,
-  B00001,
-  B00001,
-  B00001,
-  B00001,
-  B00001,
+	0b00001,
+	0b00001,
+	0b00001,
+	0b00001,
+	0b00001,
+	0b00001,
+	0b00001,
+	0b00001
 };
 
 byte finishLineOncoming[8] = {
-  B01000,
-  B00100,
-  B00010,
-  B00001,
-  B00010,
-  B00100,
-  B01000,
+	0b10001,
+	0b01001,
+	0b00101,
+	0b00011,
+	0b00101,
+	0b01001,
+	0b10001,
+	0b00001
 };
 
 void initLanes() {
@@ -82,9 +84,9 @@ void setup() {
   pinMode(0, INPUT_PULLUP);
   aXPin = A1;
   aYPin = A0;
-  lcd.createChar(0, finishLine);
-  lcd.createChar(1, finishLineOncoming);
   lcd.begin(20,4);
+  lcd.createChar(0, finishLine);
+  lcd.createChar(1,finishLineOncoming);
   initGame();
 }
 
@@ -140,11 +142,12 @@ void printLanes() {
         if (posNum < maxPosNum) {
         	lcd.print(">");
         } else {
-        	lcd.write(byte(1));
+        	lcd.write((uint8_t)1);
         }
       } else {
-    	  if (posNum = maxPosNum) {
-    		  lcd.write(byte(0));
+    	  if (posNum == maxPosNum) {
+    	      lcd.setCursor(maxLanePos - posNum, maxLaneNum - laneNum);
+    		  lcd.write((uint8_t)0);
     	  }
       }
     }
