@@ -35,8 +35,11 @@ const int scoreCol = 0;
 const int scoreRow = 0;
 const unsigned long debounceMillis = 200;
 const unsigned long oncomingUpdateMillisBase = 1000;
+const int joystickXAutorepeatDelayMillis = 200;
+const int joystickYAutorepeatDelayMillis = 200;
+
 unsigned long oncomingUpdateMillis = oncomingUpdateMillisBase;
-unsigned long posChangeUpdateMillis = 50;
+unsigned long posChangeUpdateMillis = 100;
 
 enum GameStatus {WRECK, WIN, INPLAY};
 const char *gameStatusStrings[] = {"WRECK!!", "WIN!!", "       "};
@@ -45,7 +48,7 @@ GameStatus gameStatus;
 int posX, posY;
 const byte aXPin = A1;
 const byte aYPin = A0;
-int aX, aY;
+volatile int aX, aY;
 bool lanes[numLanes][numPos];
 unsigned long lastOncomingMillis = 0;
 unsigned long lastPosChangeMillis = 0;
@@ -54,10 +57,13 @@ bool reset = true;
 int numLaps = 4;
 int lapNum;
 
+volatile bool xReleased;
+volatile bool yReleased;
+
 //these are potential configurable items, such as might be set/changed based on difficulty level, and/or via menu prefs (such as joystick threshold pct)
 int lapClearPos = 3;
 int speedChangeInc = 1;
-int joystickThreshPct = 30;
+int joystickThreshPct = 25;
 int lapScoreBonus = 10;
 int loopDelay = 200;
 // end config params
@@ -190,9 +196,33 @@ void buttonISR() {
 		reset = true;
 	}
 }
+//take joystick readings on a regular basis (vis Timer1 interrupt), to ensure getting timely input
+void readJoystick() {
+	//read from joystick
+	aX = analogRead(aXPin);
+	aY = analogRead(aYPin);
+
+	//track whether joystick has been released back to neutral, for autorepeat purposes
+	if (aX > loThresh && aX < hiThresh) {
+		xReleased = true;
+	} else {
+		xReleased = false;
+	}
+	if (aY > loThresh && aY < hiThresh) {
+		yReleased = true;
+	} else {
+		yReleased = false;
+	}
+}
 
 void setup() {
   Serial.begin(9600);
+  //first analogRead on a pin can take longer than normal, so do a quick read on each now
+  analogRead(aXPin);
+  analogRead(aYPin);
+
+  Timer1.initialize(50000);
+  Timer1.attachInterrupt(readJoystick);
 
   pinMode(buttonPin, INPUT_PULLUP);
   attachInterrupt(buttonInt, buttonISR, FALLING);
@@ -217,33 +247,49 @@ void printPlayerMarker() {
   lcd.write(playerMarkers[gameStatus]);
 }
 
-void readPos() {
-  aX = analogRead(aXPin);
-  aY = analogRead(aYPin);
+void adjustPos() {
+	//time counters for autorepeat delay (to avoid overcontrolling on autorepeat)
+	static unsigned long lastXMillis = 0;
+	static unsigned long lastYMillis = 0;
 
-  if (aX > hiThresh) {
-    posX = posX + 1;
-    if (posX > posXMax) {
-      posX = posXMax;
-    }
-  } else if (aX < loThresh) {
-    posX = posX - 1;
-    if (posX < posXMin) {
-      posX = posXMin;
-    }
-  }
+	//skip interrupts, so don't twiddle w/ values as we're working w/ them
+	noInterrupts();
 
-  if (aY > hiThresh) {
-    posY = posY + 1;
-    if (posY > posYMax) {
-      posY = posYMax;
-    }
-  } else if (aY < loThresh) {
-    posY = posY - 1;
-    if (posY < posYMin) {
-      posY = posYMin;
-    }
-  }
+	//if this is an input that started from the neutral position, react immediately
+	// if this is an autorepeat (ie, stick hasn't been released back to neutral since last pos check), then delay the autorepeat to avoid overcontrol
+	if ((aX < loThresh || aX > hiThresh) && (xReleased || (millis() - lastXMillis > joystickXAutorepeatDelayMillis))) {
+		lastXMillis = millis();
+
+		if (aX > hiThresh) {
+			posX = posX + 1;
+			if (posX > posXMax) {
+			  posX = posXMax;
+			}
+		} else if (aX < loThresh) {
+			posX = posX - 1;
+			if (posX < posXMin) {
+			  posX = posXMin;
+			}
+		}
+	}
+
+	if ((aY < loThresh || aY > hiThresh) && (yReleased || (millis() - lastYMillis > joystickYAutorepeatDelayMillis))) {
+		lastYMillis = millis();
+		if (aY > hiThresh) {
+			posY = posY + 1;
+			if (posY > posYMax) {
+			  posY = posYMax;
+			}
+		} else if (aY < loThresh) {
+			posY = posY - 1;
+			if (posY < posYMin) {
+			  posY = posYMin;
+			}
+		}
+	}
+
+	//back to accepting interrupts
+	interrupts();
 
 //  Serial << "aX" << ": " << aX << " aY" << ": " << aY << " posX: " << posX << " posY: " << posY << endl;
 
@@ -482,7 +528,7 @@ void adjustScore() {
 void loop() {
   if (reset) {
     initGame();
-    delay(2000);
+//    delay(2000);
   }
 
   if (gameStatus == INPLAY) {
@@ -499,8 +545,9 @@ void loop() {
 
     if (!checkForCollision()) {
     	if (millis() - lastPosChangeMillis > posChangeUpdateMillis) {
+    		lastPosChangeMillis = millis();
 		  clearPlayerMarker();
-		  readPos();
+		  adjustPos();
 		  printPlayerMarker();
 		  if (!checkForCollision()) {
 			checkForWin();
@@ -509,5 +556,5 @@ void loop() {
     	}
     }
   }
-  delay(loopDelay);
+//  delay(loopDelay);
 }

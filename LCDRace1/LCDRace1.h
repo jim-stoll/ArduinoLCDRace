@@ -11,6 +11,7 @@
 #include "Streaming.h"
 #include "LiquidCrystal_I2C.h"
 #include "Wire.h"
+#include "TimerOne.h"
 
 
 
@@ -39,7 +40,7 @@ void printLanes();
 void printLap();
 void printPlayerMarker();
 void printScore();
-void readPos();
+void adjustPos();
 void startNewLap();
 
 
