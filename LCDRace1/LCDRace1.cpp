@@ -13,7 +13,8 @@
 #define D7_pin        7
 
 LiquidCrystal_I2C lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin, BACKLIGHT_PIN, POSITIVE);
-
+const int buttonPin = 2;
+const int buttonInt = 0;
 const int loThresh = 255;
 const int hiThresh = 768;
 const int posXMin = 0;
@@ -39,8 +40,9 @@ bool lanes[numLanes][numPos];
 unsigned long lastOncomingMillis = 0;
 bool gameOver = false;
 int points = 0;
+bool reset = true;
 
-byte finishLine[8] = {
+byte finishLineCustomChar[8] = {
 	0b00001,
 	0b00001,
 	0b00001,
@@ -51,16 +53,43 @@ byte finishLine[8] = {
 	0b00001
 };
 
-byte finishLineOncoming[8] = {
-	0b10001,
-	0b01001,
-	0b00101,
-	0b00011,
-	0b00101,
-	0b01001,
-	0b10001,
+byte finishLineOncomingCustomChar[8] = {
+	0b00001,
+	0b00001,
+	0b11011,
+	0b01111,
+	0b11111,
+	0b01111,
+	0b11011,
 	0b00001
 };
+
+byte playerCustomChar[8] = {
+	0b00000,
+	0b11011,
+	0b11011,
+	0b01110,
+	0b11100,
+	0b01110,
+	0b11011,
+	0b11011
+};
+
+byte oncomingCustomChar[8] = {
+	0b00000,
+	0b00000,
+	0b11011,
+	0b01111,
+	0b11110,
+	0b01111,
+	0b11011,
+	0b00000
+};
+
+byte finishLineMarker = 0;
+byte finishLineOncomingMarker = 1;
+byte playerMarker = 2;
+byte oncomingMarker = 3;
 
 void initLanes() {
   for (int laneNum = 0; laneNum < numLanes; laneNum++) {
@@ -72,22 +101,31 @@ void initLanes() {
 
 void initGame() {
   lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Auto Race!!");
   posX = random(numLanes);
   posY = posYMin;
   points = 0;
   initLanes();
+  reset = false;
   gameOver = false;
+}
+
+void buttonISR() {
+	reset = true;
 }
 
 void setup() {
   Serial.begin(9600);
-  pinMode(0, INPUT_PULLUP);
+  pinMode(buttonPin, INPUT_PULLUP);
+  attachInterrupt(buttonInt, buttonISR, FALLING);
   aXPin = A1;
   aYPin = A0;
   lcd.begin(20,4);
-  lcd.createChar(0, finishLine);
-  lcd.createChar(1,finishLineOncoming);
-  initGame();
+  lcd.createChar(finishLineMarker, finishLineCustomChar);
+  lcd.createChar(finishLineOncomingMarker,finishLineOncomingCustomChar);
+  lcd.createChar(playerMarker, playerCustomChar);
+  lcd.createChar(oncomingMarker, oncomingCustomChar);
 }
 
 void clearPos() {
@@ -96,9 +134,8 @@ void clearPos() {
 }
 
 void printPos() {
-//  lcd.clear();
   lcd.setCursor(posYMax - posY, posXMax - posX);
-  lcd.print("<");
+  lcd.write((uint8_t)playerMarker);
 }
 
 void readPos() {
@@ -140,14 +177,14 @@ void printLanes() {
       if (lanes[laneNum][posNum]) {
         lcd.setCursor(maxLanePos - posNum, maxLaneNum - laneNum);
         if (posNum < maxPosNum) {
-        	lcd.print(">");
+        	lcd.write((uint8_t)oncomingMarker);
         } else {
-        	lcd.write((uint8_t)1);
+        	lcd.write((uint8_t)finishLineOncomingMarker);
         }
       } else {
     	  if (posNum == maxPosNum) {
     	      lcd.setCursor(maxLanePos - posNum, maxLaneNum - laneNum);
-    		  lcd.write((uint8_t)0);
+    		  lcd.write((uint8_t)finishLineMarker);
     	  }
       }
     }
@@ -191,33 +228,37 @@ void popLanes() {
 bool checkForCollision() {
   for (int laneNum = 0; laneNum < numLanes; laneNum++) {
     if (lanes[posX][posY]) {
-      gameOver = true;
-      lcd.setCursor(0,0);
-      lcd.print("WRECK!! ");
-      lcd.print(points);
+		gameOver = true;
+		lcd.setCursor(0,0);
+		lcd.print("WRECK!! ");
+		lcd.print(points);
 
-      lcd.setCursor(maxLanePos - posY, maxLaneNum - posX);
-      lcd.print("X");
+		lcd.setCursor(maxLanePos - posY, maxLaneNum - posX);
+		lcd.print("X");
 
-      delay(500);
-      for (int t = 0; t < 3; t++) {
-      	lcd.setCursor(0,0);
-      	lcd.print("       ");
-        lcd.setCursor(maxLanePos - posY, maxLaneNum - posX);
-        lcd.print("X");
-     	delay(500);
-      	lcd.setCursor(0,0);
-      	lcd.print("WRECK!!");
-        lcd.setCursor(maxLanePos - posY, maxLaneNum - posX);
-        lcd.print("X");
-      	delay(500);
-      }
-      gameOver = true;
-      return true;
-    }// else {
-//      return false;
-//    }
+		delay(500);
+
+		for (int t = 0; t < 3; t++) {
+			if (reset) {
+			  return true;
+			}
+			lcd.setCursor(0,0);
+			lcd.print("       ");
+			lcd.setCursor(maxLanePos - posY, maxLaneNum - posX);
+			lcd.print("X");
+			delay(500);
+			lcd.setCursor(0,0);
+			lcd.print("WRECK!!");
+			lcd.setCursor(maxLanePos - posY, maxLaneNum - posX);
+			lcd.print("X");
+			delay(500);
+		}
+
+		gameOver = true;
+		return true;
+    }
   }
+
   return false;
 }
 
@@ -228,6 +269,9 @@ void checkForWin() {
     lcd.print(points);
     delay(500);
     for (int t = 0; t < 3; t++) {
+		if (reset) {
+		  return;
+		}
     	lcd.setCursor(0,0);
     	lcd.print("     ");
     	delay(250);
@@ -257,7 +301,7 @@ void adjustPoints() {
 
 
 void loop() {
-  if (!digitalRead(0)) {
+  if (reset) {
     initGame();
     delay(2000);
   }
