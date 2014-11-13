@@ -29,7 +29,7 @@ void setup();
 
 void adjustScore();
 void buttonISR();
-void checkForWin();
+void checkForLap();
 void clearPlayerMarker();
 void debugLanes();
 void initGame();

@@ -33,12 +33,10 @@ const int lapCol = 0;
 const int lapRow = 3;
 const int scoreCol = 0;
 const int scoreRow = 0;
-const unsigned long debounceMillis = 200;
-const unsigned long oncomingUpdateMillisBase = 1000;
-const int joystickXAutorepeatDelayMillis = 200;
-const int joystickYAutorepeatDelayMillis = 200;
-
-unsigned long oncomingUpdateMillis = oncomingUpdateMillisBase;
+const unsigned long switchDebounceMillis = 200;
+const unsigned long splashDelayMillis = 1000;
+unsigned long lastOncomingMillis = 0;
+unsigned long lastPosChangeMillis = 0;
 unsigned long posChangeUpdateMillis = 100;
 
 enum GameStatus {WRECK, WIN, INPLAY};
@@ -50,8 +48,6 @@ const byte aXPin = A1;
 const byte aYPin = A0;
 volatile int aX, aY;
 bool lanes[numLanes][numPos];
-unsigned long lastOncomingMillis = 0;
-unsigned long lastPosChangeMillis = 0;
 int score = 0;
 bool reset = true;
 int numLaps = 4;
@@ -60,13 +56,19 @@ int lapNum;
 volatile bool xReleased;
 volatile bool yReleased;
 
+//**TODO: might be fun to have some type of time-based bonus or penalty
+//        (don't have the space to show a timer, however...)
 //these are potential configurable items, such as might be set/changed based on difficulty level, and/or via menu prefs (such as joystick threshold pct)
 int lapClearPos = 3;
-int speedChangeInc = 1;
-int joystickThreshPct = 25;
+int speedChangeInc = 10; //could  be adjusted for harder levels - controls speed diff as move up track, as well as in accumulated laps
+const unsigned long oncomingUpdateMillisBase = 1000; //could also be shortened for higher levels
+int joystickThreshPct = 25; //could be pref for responsiveness of joystick
 int lapScoreBonus = 10;
-int loopDelay = 200;
+const int joystickXAutorepeatDelayMillis = 200; //could be pref for responsiveness of car
+const int joystickYAutorepeatDelayMillis = 200;
 // end config params
+
+unsigned long oncomingUpdateMillis = oncomingUpdateMillisBase;
 
 int loThresh = 1023*joystickThreshPct/100.0;
 int hiThresh = 1023*(1.0-joystickThreshPct/100.0);
@@ -191,7 +193,7 @@ void initGame() {
 void buttonISR() {
 	static unsigned long lastMillis = 0;
 
-	if (millis() - lastMillis > debounceMillis) {
+	if (millis() - lastMillis > switchDebounceMillis) {
 		lastMillis = millis();
 		reset = true;
 	}
@@ -476,7 +478,7 @@ bool checkForCollision() {
 }
 
 //**TODO: might want to split out the lap vs win functionality here
-void checkForWin() {
+void checkForLap() {
   if (posY == maxLanePos-1) {
 	  if (lapNum == numLaps) {
 		gameStatus = WIN;
@@ -526,35 +528,37 @@ void adjustScore() {
 }
 
 void loop() {
-  if (reset) {
-    initGame();
-//    delay(2000);
-  }
 
-  if (gameStatus == INPLAY) {
-    if (millis() - lastOncomingMillis > oncomingUpdateMillis) {
-      lastOncomingMillis = millis();
-      popLanes();
-  //    debugLanes();
-      printLanes();
-      if (!checkForCollision()) {
-        adjustScore();
-        printScore();
-      }
-    }
+	if (reset) {
+		initGame();
+		delay(splashDelayMillis);
+	}
 
-    if (!checkForCollision()) {
-    	if (millis() - lastPosChangeMillis > posChangeUpdateMillis) {
-    		lastPosChangeMillis = millis();
-		  clearPlayerMarker();
-		  adjustPos();
-		  printPlayerMarker();
+	if (gameStatus == INPLAY) {
+		if (millis() - lastOncomingMillis > oncomingUpdateMillis) {
+		  lastOncomingMillis = millis();
+		  popLanes();
+		//    debugLanes();
+		  printLanes();
 		  if (!checkForCollision()) {
-			checkForWin();
+			adjustScore();
+			printScore();
 		  }
-		  adjustOncomingSpeed();
-    	}
-    }
-  }
-//  delay(loopDelay);
+		}
+
+		if (!checkForCollision()) {
+			if (millis() - lastPosChangeMillis > posChangeUpdateMillis) {
+				lastPosChangeMillis = millis();
+				clearPlayerMarker();
+				adjustPos();
+				printPlayerMarker();
+
+				if (!checkForCollision()) {
+					checkForLap();
+				}
+
+			  adjustOncomingSpeed();
+			}
+		}
+	}
 }
