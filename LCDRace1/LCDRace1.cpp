@@ -1,6 +1,7 @@
 // Do not remove the include below
 #include "LCDRace1.h"
 
+//**TODO: don't repaint player marker, if hasn't moved from last position?
 
 #define I2C_ADDR      0x27 // I2C address of PCF8574A
 #define BACKLIGHT_PIN 3
@@ -47,11 +48,12 @@ int posX, posY;
 const byte aXPin = A1;
 const byte aYPin = A0;
 volatile int aX, aY;
-bool lanes[numLanes][numPos];
+byte lanes[numLanes][numPos];
 int score = 0;
 bool reset = true;
 int numLaps = 4;
 int lapNum;
+unsigned long lapStartMillis;
 
 volatile bool xReleased;
 volatile bool yReleased;
@@ -163,7 +165,7 @@ uint8_t playerMarkers[] = {wreckMarker, playerMarker, playerMarker};
 void initLanes() {
   for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
     for (int posNum = minLanePos; posNum < numPos; posNum ++) {
-      lanes[laneNum][posNum] = false;
+      lanes[laneNum][posNum] = 0;
     }
   }
 }
@@ -173,13 +175,13 @@ void initGame() {
   lcd.setCursor(0,0);
   lcd.print("LCD Race!!");
   lcd.setCursor(0,1);
-  lcd.write((uint8_t)oncomingMarker);
-  lcd.write((uint8_t)oncomingMarker);
-  lcd.write((uint8_t)oncomingMarker);
+  lcd.write(oncomingMarker);
+  lcd.write(oncomingMarker);
+  lcd.write(oncomingMarker);
   lcd.setCursor(8,1);
-  lcd.write((uint8_t)playerMarker);
-  lcd.write((uint8_t)playerMarker);
-  lcd.write((uint8_t)playerMarker);
+  lcd.write(playerMarker);
+  lcd.write(playerMarker);
+  lcd.write(playerMarker);
 
   posX = random(numLanes);
   posY = posYMin;
@@ -343,17 +345,17 @@ void printLanes() {
   printScore();
   for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
     for (int posNum = minLanePos; posNum < numPos; posNum++) {
-      if (lanes[laneNum][posNum]) {
+      if (lanes[laneNum][posNum] > 0) {
         lcd.setCursor((19-maxLanePos) + maxLanePos - posNum, maxLaneNum - laneNum);
         if (posNum < maxPosNum) {
-        	lcd.write((uint8_t)oncomingMarker);
+        	lcd.write(oncomingMarker);
         } else {
-        	lcd.write((uint8_t)finishLineOncomingMarker);
+        	lcd.write(finishLineOncomingMarker);
         }
       } else {
     	  if (posNum == maxPosNum) {
     	      lcd.setCursor((19-maxLanePos) + maxLanePos - posNum, maxLaneNum - laneNum);
-    		  lcd.write((uint8_t)finishLineMarker);
+    		  lcd.write(finishLineMarker);
     	  }
       }
     }
@@ -365,7 +367,7 @@ void debugLanes() {
   for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
     Serial << "L" << laneNum << ": ";
     for (int posNum = minLanePos; posNum < numPos; posNum++) {
-      if (lanes[laneNum][posNum]) {
+      if (lanes[laneNum][posNum] > 0) {
         Serial << "1";
       } else {
         Serial << "0";
@@ -388,7 +390,7 @@ void popLanes() {
 		foundEmptyLane = true;
 		Serial << "checking lane: " << laneNum << endl;
 		for (int posNum = minLanePos; posNum < numPos; posNum++) {
-			if (lanes[laneNum][posNum]) {
+			if (lanes[laneNum][posNum] > 0) {
 				foundEmptyLane = false;
 				break;
 			}
@@ -412,15 +414,15 @@ void popLanes() {
 
 	for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
 		for (int posNum = minLanePos; posNum < maxLanePos; posNum++) {
-			lanes[laneNum][posNum] = false;
-			if (lanes[laneNum][posNum+1]) {
-				lanes[laneNum][posNum] = true;
+			lanes[laneNum][posNum] = 0;
+			if (lanes[laneNum][posNum+1] > 0) {
+				lanes[laneNum][posNum] = lanes[laneNum][posNum+1];
 			}
 		}
-		lanes[laneNum][maxLanePos] = false;
+		lanes[laneNum][maxLanePos] = 0;
 	}
 
-	lanes[newLane][maxLanePos] = true;
+	lanes[newLane][maxLanePos] = 1;
 
 }
 
@@ -465,7 +467,7 @@ void printGameStatus() {
 
 bool checkForCollision() {
   for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
-    if (lanes[posX][posY]) {
+    if (lanes[posX][posY] > 0) {
     	gameStatus = WRECK;
 
 		printGameStatus();
@@ -492,10 +494,17 @@ void checkForLap() {
 void startNewLap() {
 	lapNum = lapNum + 1;
 
-	//clear out the bottom 2 lanes, to avoid immediate collision
+	//clear pass flags, so new lap will give points for all cars that are passed
+	//clear bottom rows to avoid iimediate collision at start of next lap
 	for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
-		for (int posNum = minLanePos; posNum <= lapClearPos; posNum++) {
-			lanes[laneNum][posNum] = false;
+		for (int posNum = minLanePos; posNum <= maxLanePos; posNum++) {
+			if (lanes[laneNum][posNum] > 0) {
+				lanes[laneNum][posNum] = 1;
+			}
+
+			if (posNum <= lapClearPos) {
+				lanes[laneNum][posNum] = 0;
+			}
 		}
 	}
 
@@ -505,6 +514,7 @@ void startNewLap() {
 	printLanes();
 	posY = minLanePos;
 	printPlayerMarker();
+	delay(250);
 }
 
 void adjustOncomingSpeed() {
@@ -517,10 +527,12 @@ void adjustOncomingSpeed() {
 //         credit for the ones immediately behind the player, when the oncomings are adjusted)
 //**TODO: seem to be getting occasional discrepancy between score reported at top vs side
 void adjustScore() {
-  if (posY > 0) {
+  if (posY > minLanePos) {
     for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
-       if (lanes[laneNum][posY - 1]) {
-         score = score + posY * scoreScale;
+       if (lanes[laneNum][posY - 1] == 1) {
+    	   lanes[laneNum][posY - 1] = 2;
+//         score = score + posY * scoreScale;
+    	   score = score + lapNum * scoreScale;
        }
     }
   }
@@ -532,33 +544,32 @@ void loop() {
 	if (reset) {
 		initGame();
 		delay(splashDelayMillis);
-	}
+	} else {
 
-	if (gameStatus == INPLAY) {
-		if (millis() - lastOncomingMillis > oncomingUpdateMillis) {
-		  lastOncomingMillis = millis();
-		  popLanes();
-		//    debugLanes();
-		  printLanes();
-		  if (!checkForCollision()) {
-			adjustScore();
-			printScore();
-		  }
-		}
+		if (gameStatus == INPLAY) {
+			if (millis() - lastOncomingMillis > oncomingUpdateMillis) {
+			  lastOncomingMillis = millis();
+			  popLanes();
+			//    debugLanes();
+			  printLanes();
+			  adjustScore();
+			}
 
-		if (!checkForCollision()) {
-			if (millis() - lastPosChangeMillis > posChangeUpdateMillis) {
-				lastPosChangeMillis = millis();
-				clearPlayerMarker();
-				adjustPos();
-				printPlayerMarker();
+			if (!checkForCollision()) {
+				if (millis() - lastPosChangeMillis > posChangeUpdateMillis) {
+					lastPosChangeMillis = millis();
+					clearPlayerMarker();
+					adjustPos();
+					printPlayerMarker();
 
-				if (!checkForCollision()) {
-					checkForLap();
+				  adjustOncomingSpeed();
 				}
 
-			  adjustOncomingSpeed();
+				adjustScore();
+				printScore();
+				checkForLap();
 			}
+
 		}
 	}
 }
