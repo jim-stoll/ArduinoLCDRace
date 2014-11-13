@@ -26,6 +26,21 @@ void setup();
 
 //add your function definitions for the project LCDRace1 here
 
+void adjustScore();
+void buttonISR();
+void checkForWin();
+void clearPlayerMarker();
+void debugLanes();
+void initGame();
+void initLanes();
+void popLanes();
+void printGameStatus();
+void printLanes();
+void printLap();
+void printPlayerMarker();
+void printScore();
+void readPos();
+void startNewLap();
 
 
 

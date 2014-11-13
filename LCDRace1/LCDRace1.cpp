@@ -27,15 +27,20 @@ const int minLanePos = 0;
 const int maxLaneNum = 3;
 const int minLaneNum = 0;
 const int scoreScale = 1;
-const int resultCol = 2;
+const int resultCol = 3;
 const int resultRow = 0;
 const int lapCol = 0;
 const int lapRow = 3;
 const int scoreCol = 0;
 const int scoreRow = 0;
+const unsigned long debounceMillis = 200;
 const unsigned long oncomingUpdateMillisBase = 1000;
 unsigned long oncomingUpdateMillis = oncomingUpdateMillisBase;
 unsigned long posChangeUpdateMillis = 50;
+
+enum GameStatus {WRECK, WIN, INPLAY};
+const char *gameStatusStrings[] = {"WRECK!!", "WIN!!", "       "};
+GameStatus gameStatus;
 
 int posX, posY;
 const byte aXPin = A1;
@@ -44,11 +49,10 @@ int aX, aY;
 bool lanes[numLanes][numPos];
 unsigned long lastOncomingMillis = 0;
 unsigned long lastPosChangeMillis = 0;
-bool gameOver = false;
 int score = 0;
 bool reset = true;
 int numLaps = 4;
-int lapNum = 1;
+int lapNum;
 
 //these are potential configurable items, such as might be set/changed based on difficulty level, and/or via menu prefs (such as joystick threshold pct)
 int lapClearPos = 3;
@@ -138,13 +142,15 @@ byte lap4CustomChar[8] = {
 	0b00000
 };
 
-byte finishLineMarker = 0;
-byte finishLineOncomingMarker = 1;
-byte playerMarker = 2;
-byte oncomingMarker = 3;
-byte wreckMarker = 4;
-byte lap3Marker = 5;
-byte lap4Marker = 6;
+uint8_t finishLineMarker = 0;
+uint8_t finishLineOncomingMarker = 1;
+uint8_t playerMarker = 2;
+uint8_t oncomingMarker = 3;
+uint8_t wreckMarker = 4;
+uint8_t lap3Marker = 5;
+uint8_t lap4Marker = 6;
+//NOTE - using this array based on gameState - the 'win' marker and the 'inplay' marker are the same marker, so using it in 2 places in this array
+uint8_t playerMarkers[] = {wreckMarker, playerMarker, playerMarker};
 
 void initLanes() {
   for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
@@ -157,7 +163,7 @@ void initLanes() {
 void initGame() {
   lcd.clear();
   lcd.setCursor(0,0);
-  lcd.print("Auto Race!!");
+  lcd.print("LCD Race!!");
   lcd.setCursor(0,1);
   lcd.write((uint8_t)oncomingMarker);
   lcd.write((uint8_t)oncomingMarker);
@@ -173,11 +179,16 @@ void initGame() {
   lapNum = 1;
   initLanes();
   reset = false;
-  gameOver = false;
+  gameStatus = INPLAY;
 }
 
 void buttonISR() {
-	reset = true;
+	static unsigned long lastMillis = 0;
+
+	if (millis() - lastMillis > debounceMillis) {
+		lastMillis = millis();
+		reset = true;
+	}
 }
 
 void setup() {
@@ -196,14 +207,14 @@ void setup() {
   lcd.createChar(lap4Marker, lap4CustomChar);
 }
 
-void clearPos() {
+void clearPlayerMarker() {
   lcd.setCursor((19-maxLanePos) + posYMax - posY, posXMax - posX);
   lcd.print(" ");
 }
 
-void printPos() {
+void printPlayerMarker() {
   lcd.setCursor((19-maxLanePos) + posYMax - posY, posXMax - posX);
-  lcd.write((uint8_t)playerMarker);
+  lcd.write(playerMarkers[gameStatus]);
 }
 
 void readPos() {
@@ -365,44 +376,69 @@ void popLanes() {
 
 }
 
-//**TODO: consider moving result flashing to a separate function, as it could also be called from checkForWin (would need to be sure to re-print wreck marker, though...)
-bool checkForCollision() {
-  for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
-    if (lanes[posX][posY]) {
-		gameOver = true;
-		lcd.setCursor(resultCol, resultRow);
-		lcd.print("WRECK!! ");
-		lcd.print(score);
+void printGameStatus() {
 
-		lcd.setCursor((19-maxLanePos) + maxLanePos - posY, maxLaneNum - posX);
-		lcd.write((uint8_t)wreckMarker);
+	if (gameStatus == WRECK || gameStatus == WIN) {
+
+		//print status
+		lcd.setCursor(resultCol, resultRow);
+		lcd.print(gameStatusStrings[gameStatus]);
+//		lcd.print(score);
+
+		//in case the status covers the final player position, re-print final position and appropriate marker
+		printPlayerMarker();
 
 		delay(500);
 
+		//celebration/shame-abration - flash the status and player position
 		for (int t = 0; t < 3; t++) {
+			//allow breaking out of status display
 			if (reset) {
-			  return true;
+			  return;
 			}
-
+			//clear the status and player marker
 			lcd.setCursor(resultCol, resultRow);
-			lcd.print("       ");
+			lcd.print(gameStatusStrings[INPLAY]);
 			lcd.setCursor((19-maxLanePos) + maxLanePos - posY, maxLaneNum - posX);
-			lcd.write((uint8_t)wreckMarker);
-			delay(500);
-			lcd.setCursor(resultCol, resultRow);
-			lcd.print("WRECK!!");
-			lcd.setCursor((19-maxLanePos) + maxLanePos - posY, maxLaneNum - posX);
-			lcd.write((uint8_t)wreckMarker);
+			clearPlayerMarker();
 
-			delay(500);
+			delay(250);
+
+			//print status and last player marker
+			lcd.setCursor(resultCol, resultRow);
+			lcd.print(gameStatusStrings[gameStatus]);
+			lcd.setCursor((19-maxLanePos) + maxLanePos - posY, maxLaneNum - posX);
+			printPlayerMarker();
+
+			delay(250);
 		}
+	}
+}
 
-		gameOver = true;
+bool checkForCollision() {
+  for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
+    if (lanes[posX][posY]) {
+    	gameStatus = WRECK;
+
+		printGameStatus();
+
 		return true;
     }
   }
 
   return false;
+}
+
+//**TODO: might want to split out the lap vs win functionality here
+void checkForWin() {
+  if (posY == maxLanePos-1) {
+	  if (lapNum == numLaps) {
+		gameStatus = WIN;
+		printGameStatus();
+	  } else {
+		  startNewLap();
+	  }
+  }
 }
 
 void startNewLap() {
@@ -420,34 +456,7 @@ void startNewLap() {
 	//**TODO: might consider if/what printLanes should be doing, vs breaking out a bit more cleanly
 	printLanes();
 	posY = minLanePos;
-	printPos();
-}
-
-//**TODO: might want to split out the lap vs win functionality here
-void checkForWin() {
-  if (posY == maxLanePos-1) {
-	  if (lapNum == numLaps) {
-		lcd.setCursor(resultCol, resultRow);
-		lcd.print("WIN!! ");
-		lcd.print(score);
-		delay(500);
-		for (int t = 0; t < 3; t++) {
-			if (reset) {
-			  return;
-			}
-			lcd.setCursor(resultCol, resultRow);
-			lcd.print("     ");
-			delay(250);
-			lcd.setCursor(resultCol, resultRow);
-			lcd.print("WIN!!");
-			delay(500);
-		}
-
-		gameOver = true;
-	  } else {
-		  startNewLap();
-	  }
-  }
+	printPlayerMarker();
 }
 
 void adjustOncomingSpeed() {
@@ -476,7 +485,7 @@ void loop() {
     delay(2000);
   }
 
-  if (!gameOver) {
+  if (gameStatus == INPLAY) {
     if (millis() - lastOncomingMillis > oncomingUpdateMillis) {
       lastOncomingMillis = millis();
       popLanes();
@@ -490,9 +499,9 @@ void loop() {
 
     if (!checkForCollision()) {
     	if (millis() - lastPosChangeMillis > posChangeUpdateMillis) {
-		  clearPos();
+		  clearPlayerMarker();
 		  readPos();
-		  printPos();
+		  printPlayerMarker();
 		  if (!checkForCollision()) {
 			checkForWin();
 		  }
