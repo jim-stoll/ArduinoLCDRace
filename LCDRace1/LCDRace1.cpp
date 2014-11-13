@@ -86,10 +86,22 @@ byte oncomingCustomChar[8] = {
 	0b00000
 };
 
+byte wreckCustomChar[8] = {
+	0b10100,
+	0b01001,
+	0b10101,
+	0b00001,
+	0b00001,
+	0b10101,
+	0b01001,
+	0b10100
+};
+
 byte finishLineMarker = 0;
 byte finishLineOncomingMarker = 1;
 byte playerMarker = 2;
 byte oncomingMarker = 3;
+byte wreckMarker = 4;
 
 void initLanes() {
   for (int laneNum = 0; laneNum < numLanes; laneNum++) {
@@ -103,6 +115,15 @@ void initGame() {
   lcd.clear();
   lcd.setCursor(0,0);
   lcd.print("Auto Race!!");
+  lcd.setCursor(0,1);
+  lcd.write((uint8_t)oncomingMarker);
+  lcd.write((uint8_t)oncomingMarker);
+  lcd.write((uint8_t)oncomingMarker);
+  lcd.setCursor(8,1);
+  lcd.write((uint8_t)playerMarker);
+  lcd.write((uint8_t)playerMarker);
+  lcd.write((uint8_t)playerMarker);
+
   posX = random(numLanes);
   posY = posYMin;
   points = 0;
@@ -126,6 +147,7 @@ void setup() {
   lcd.createChar(finishLineOncomingMarker,finishLineOncomingCustomChar);
   lcd.createChar(playerMarker, playerCustomChar);
   lcd.createChar(oncomingMarker, oncomingCustomChar);
+  lcd.createChar(wreckMarker, wreckCustomChar);
 }
 
 void clearPos() {
@@ -234,7 +256,7 @@ bool checkForCollision() {
 		lcd.print(points);
 
 		lcd.setCursor(maxLanePos - posY, maxLaneNum - posX);
-		lcd.print("X");
+		lcd.write((uint8_t)wreckMarker);
 
 		delay(500);
 
@@ -245,12 +267,13 @@ bool checkForCollision() {
 			lcd.setCursor(0,0);
 			lcd.print("       ");
 			lcd.setCursor(maxLanePos - posY, maxLaneNum - posX);
-			lcd.print("X");
+			lcd.write((uint8_t)wreckMarker);
 			delay(500);
 			lcd.setCursor(0,0);
 			lcd.print("WRECK!!");
 			lcd.setCursor(maxLanePos - posY, maxLaneNum - posX);
-			lcd.print("X");
+			lcd.write((uint8_t)wreckMarker);
+
 			delay(500);
 		}
 
