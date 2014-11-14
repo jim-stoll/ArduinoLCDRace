@@ -1,4 +1,3 @@
-// Do not remove the include below
 #include "LCDRace1.h"
 
 //**TODO: don't repaint player marker, if hasn't moved from last position?
@@ -54,12 +53,12 @@ bool reset = true;
 int numLaps = 4;
 int lapNum;
 unsigned long lapStartMillis;
+int lapBonusTimeBase = 5000;
+int lapBonusTimeInc = 1000;
 
 volatile bool xReleased;
 volatile bool yReleased;
 
-//**TODO: might be fun to have some type of time-based bonus or penalty
-//        (don't have the space to show a timer, however...)
 //these are potential configurable items, such as might be set/changed based on difficulty level, and/or via menu prefs (such as joystick threshold pct)
 int lapClearPos = 3;
 int speedChangeInc = 10; //could  be adjusted for harder levels - controls speed diff as move up track, as well as in accumulated laps
@@ -186,10 +185,11 @@ void initGame() {
   posX = random(numLanes);
   posY = posYMin;
   score = 0;
-  lapNum = 1;
+  lapNum = 0;
   initLanes();
   reset = false;
   gameStatus = INPLAY;
+  startNewLap();
 }
 
 void buttonISR() {
@@ -314,28 +314,42 @@ void printLap() {
 
 }
 
+void getDigits(int num, byte *digits) {
+	digits[0] = 0;
+	digits[1] = 0;
+	digits[2] = 0;
+
+	if (num == 0 || num > 999) {
+		return;
+	}
+
+	digits[2] = num/100;
+	digits[1] = (num - 100*digits[2])/10;
+	digits[0] = num - 100*digits[2] - 10*digits[1];
+//Serial << "digits: " << digits[2] << digits[1] << digits[0] << endl;
+}
+
 void printScore() {
-	int huns = 0;
-	int tens = 0;
-	int ones = 0;
 	byte printRow = scoreRow;
 
-	if (score > 99) {
-		lcd.setCursor(scoreCol, printRow);
-		huns = score/100;
-		lcd.print(huns);
+	byte digits[3];
+	getDigits(score, digits);
+
+	lcd.setCursor(scoreCol, printRow);
+
+	if (digits[2] > 0) {
+		lcd.print(digits[2]);
 		printRow = printRow + 1;
 	}
 
-	if (score - 100*huns > 9) {
-		tens = (score - 100*huns)/10;
+	if (digits[1] > 0 || digits[2] > 0) {
 		lcd.setCursor(scoreCol, printRow);
-		lcd.print(tens);
+		lcd.print(digits[1]);
 		printRow = printRow + 1;
 	}
 
 	lcd.setCursor(scoreCol, printRow);
-	lcd.print(score - 100*huns - 10*tens);
+	lcd.print(digits[0]);
 
 }
 
@@ -388,7 +402,6 @@ void popLanes() {
 	//check for empty lanes
 	for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
 		foundEmptyLane = true;
-		Serial << "checking lane: " << laneNum << endl;
 		for (int posNum = minLanePos; posNum < numPos; posNum++) {
 			if (lanes[laneNum][posNum] > 0) {
 				foundEmptyLane = false;
@@ -406,7 +419,6 @@ void popLanes() {
 	if (emptyLaneCt > 0) {
 		int emptyLaneIdx = random(emptyLaneCt);
 		newLane = emptyLanes[emptyLaneIdx];
-		Serial << "choosing empty lane: " << newLane << endl;
 	//otherwise, just pick a random lane
 	} else {
 		newLane = random(numLanes);
@@ -433,7 +445,6 @@ void printGameStatus() {
 		//print status
 		lcd.setCursor(resultCol, resultRow);
 		lcd.print(gameStatusStrings[gameStatus]);
-//		lcd.print(score);
 
 		//in case the status covers the final player position, re-print final position and appropriate marker
 		printPlayerMarker();
@@ -492,6 +503,40 @@ void checkForLap() {
 }
 
 void startNewLap() {
+	score = score + lapNum * lapScoreBonus;
+
+	if (lapNum == 0) {
+		lapStartMillis = 0;
+	}
+
+	unsigned long currMillis = millis();
+//	Serial << "laptime: " << currMillis - lapStartMillis << endl;
+
+	unsigned long lapBonusTargetMillis = lapBonusTimeBase + lapNum * lapBonusTimeInc;
+	int lapBonus = 0;
+
+	if (lapStartMillis > 0 && (currMillis - lapStartMillis) < lapBonusTargetMillis) {
+		//award bounus point for each .1 sec faster than target time
+		lapBonus = (lapBonusTargetMillis - (currMillis - lapStartMillis))/100;
+//		Serial << "time bonus: " <<  lapBonus << endl;
+		score = score + lapBonus;
+		lcd.setCursor(0,0);
+		lcd.print("+");
+		lcd.print(lapBonus);
+		lcd.print(" SPEED!");
+		delay(125);
+		lcd.setCursor(0,0);
+		lcd.print("           ");
+		delay(125);
+		lcd.setCursor(0,0);
+		lcd.print("+");
+		lcd.print(lapBonus);
+		lcd.print(" SPEED!");
+
+		delay(500);
+
+	}
+
 	lapNum = lapNum + 1;
 
 	//clear pass flags, so new lap will give points for all cars that are passed
@@ -508,24 +553,19 @@ void startNewLap() {
 		}
 	}
 
-	score = score + lapNum * lapScoreBonus;
 	//printLanes does printLap and printScore, in addition to printing lanes
 	//**TODO: might consider if/what printLanes should be doing, vs breaking out a bit more cleanly
 	printLanes();
 	posY = minLanePos;
 	printPlayerMarker();
 	delay(250);
+	lapStartMillis = millis();
 }
 
 void adjustOncomingSpeed() {
     oncomingUpdateMillis = oncomingUpdateMillisBase - (speedChangeInc * posY + speedChangeInc*(numPos * (lapNum-1)));
 }
 
-//**TODO: figure out how to handle score, so that can't game system by putzing up and down a lane, to double-count already-passed oncomings
-//**TODO: may want to adjust how/when calling this, so that get credit for oncomings passed when going forward faster than oncomings are progressing
-//        (presently, score is adjusted when oncomings are moved down the track, but the faster player can move past multiple oncomings in that time, thus only getting
-//         credit for the ones immediately behind the player, when the oncomings are adjusted)
-//**TODO: seem to be getting occasional discrepancy between score reported at top vs side
 void adjustScore() {
   if (posY > minLanePos) {
     for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {

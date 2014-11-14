@@ -42,7 +42,7 @@ void printPlayerMarker();
 void printScore();
 void adjustPos();
 void startNewLap();
-
+void getDigits(int num, byte *digits);
 
 
 //Do not add code below this line
