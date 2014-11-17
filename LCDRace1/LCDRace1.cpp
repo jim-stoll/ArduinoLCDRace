@@ -40,12 +40,12 @@ unsigned long lastPosChangeMillis = 0;
 unsigned long posChangeUpdateMillis = 100;
 
 enum GameStatus {WRECK, WIN, INPLAY};
-const char *gameStatusStrings[] = {"WRECK!!", "WIN!!", "       "};
+const char *gameStatusStrings[] = {"CRASH!!", "WIN!!", "       "};
 GameStatus gameStatus;
 
 int posX, posY;
-const byte aXPin = A1;
-const byte aYPin = A0;
+const byte aXPin = A0;
+const byte aYPin = A1;
 volatile int aX, aY;
 byte lanes[numLanes][numPos];
 int score = 0;
@@ -119,14 +119,22 @@ byte oncomingCustomChar[8] = {
 };
 
 byte wreckCustomChar[8] = {
-	0b10100,
-	0b01001,
-	0b10101,
-	0b00001,
-	0b00001,
-	0b10101,
-	0b01001,
-	0b10100
+//	0b10100,
+//	0b01001,
+//	0b10101,
+//	0b00001,
+//	0b00001,
+//	0b10101,
+//	0b01001,
+//	0b10100
+		0b00001,
+		0b01001,
+		0b11011,
+		0b11111,
+		0b11111,
+		0b11011,
+		0b01001,
+		0b00001
 };
 
 byte lap3CustomChar[8] = {
@@ -187,6 +195,9 @@ void initGame() {
   score = 0;
   lapNum = 0;
   initLanes();
+  for (int x = 0; x < 10; x++) {
+	  popLanes();
+  }
   reset = false;
   gameStatus = INPLAY;
   startNewLap();
@@ -204,7 +215,7 @@ void buttonISR() {
 void readJoystick() {
 	//read from joystick
 	aX = analogRead(aXPin);
-	aY = analogRead(aYPin);
+	aY = 1023 - analogRead(aYPin);
 
 	//track whether joystick has been released back to neutral, for autorepeat purposes
 	if (aX > loThresh && aX < hiThresh) {
