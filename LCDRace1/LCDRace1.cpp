@@ -69,6 +69,7 @@ int lapNum;
 unsigned long lapStartMillis;
 int lapBonusTimeBase = 8000;
 int lapBonusTimeInc = 2000;
+bool buttonPressed = false;
 
 volatile bool xReleased;
 volatile bool yReleased;
@@ -82,6 +83,8 @@ int lapScoreBonus = 10;
 const int joystickXAutorepeatDelayMillis = 200; //could be pref for responsiveness of car
 const int joystickYAutorepeatDelayMillis = 200;
 byte playLevel = 1;
+byte minPlayLevel = 1;
+byte maxPlayLevel = 2;
 byte laneSparsityThreshold = 2;
 const byte fuelMarkerPctChance = 5;
 int fuelBonus = 10;
@@ -207,24 +210,75 @@ void initLanes() {
   }
 }
 
-void initGame() {
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("LCD Race!!");
-  lcd.setCursor(0,1);
-  lcd.write(oncomingMarker);
-  lcd.write(oncomingMarker);
-  lcd.write(oncomingMarker);
-  lcd.setCursor(8,1);
-  lcd.write(playerMarker);
-  lcd.write(playerMarker);
-  lcd.write(playerMarker);
+void showSplash() {
+	  lcd.clear();
+	  lcd.setCursor(0,0);
+	  lcd.print("LCD Race!!");
+	  lcd.setCursor(0,1);
+	  lcd.write(oncomingMarker);
+	  lcd.write(oncomingMarker);
+	  lcd.write(oncomingMarker);
+	  lcd.setCursor(8,1);
+	  lcd.write(playerMarker);
+	  lcd.write(playerMarker);
+	  lcd.write(playerMarker);
+	  delay(splashDelayMillis);
+}
 
+void selectLevel() {
+	lcd.clear();
+	lcd.setCursor(0,0);
+	lcd.print("Level: ");
+
+	static unsigned long lastXMillis = 0;
+	static unsigned long lastYMillis = 0;
+
+	//call getButtonPressed to clear flag, if its set
+	getButtonPressed();
+
+	while (!buttonPressed) {
+		lcd.setCursor(7,0);
+		lcd.print(playLevel);
+		if (((aY < loThresh || aY > hiThresh) && (yReleased || (millis() - lastYMillis > joystickYAutorepeatDelayMillis))) || (aX < loThresh || aX > hiThresh) && (xReleased || (millis() - lastXMillis > joystickXAutorepeatDelayMillis))) {
+			lastXMillis = millis();
+			lastYMillis = millis();
+
+			if (aY > hiThresh || aX > hiThresh) {
+				playLevel = playLevel + 1;
+				if (playLevel > maxPlayLevel) {
+				  playLevel = maxPlayLevel;
+				}
+			} else if (aY < loThresh || aX < loThresh) {
+				playLevel = playLevel - 1;
+				if (playLevel < minPlayLevel) {
+				  playLevel = minPlayLevel;
+				}
+			}
+		}
+
+	}
+
+	for (int x = 0; x < 3; x++) {
+		lcd.setCursor(0,0);
+		lcd.print("        ");
+		delay(125);
+		lcd.setCursor(0,0);
+		lcd.print("Level: ");
+		lcd.print(playLevel);
+		delay(125);
+	}
+
+	delay(125);
+
+}
+
+void initGame() {
   posX = random(numLanes);
   posY = posYMin;
   score = 0;
   lapNum = 0;
   initLanes();
+  selectLevel();
   for (int x = 0; x < 10; x++) {
 	  popLanes(laneSparsityThreshold);
   }
@@ -233,12 +287,21 @@ void initGame() {
   startNewLap();
 }
 
+bool getButtonPressed() {
+	if (buttonPressed) {
+		buttonPressed = false;
+	}
+
+	return buttonPressed;
+}
+
 void buttonISR() {
 	static unsigned long lastMillis = 0;
 
 	if (millis() - lastMillis > switchDebounceMillis) {
 		lastMillis = millis();
 		reset = true;
+		buttonPressed = true;
 	}
 }
 //take joystick readings on a regular basis (vis Timer1 interrupt), to ensure getting timely input
@@ -290,6 +353,8 @@ void setup() {
   lcd.createChar(lap3Marker, lap3CustomChar);
   lcd.createChar(lap4Marker, lap4CustomChar);
   lcd.createChar(fuelMarker, fuelCustomChar);
+
+  showSplash();
 }
 
 void clearPlayerMarker() {
@@ -727,6 +792,7 @@ void loop() {
 	if (reset) {
 		initGame();
 		delay(splashDelayMillis);
+//		selectLevel();
 	} else {
 
 		if (gameStatus == INPLAY) {

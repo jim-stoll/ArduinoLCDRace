@@ -44,6 +44,7 @@ void adjustPos();
 void startNewLap();
 void getDigits(int num, byte *digits);
 void showBonus(char message[], int points);
+bool getButtonPressed();
 
 
 //Do not add code below this line
