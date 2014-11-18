@@ -67,8 +67,8 @@ bool reset = true;
 int numLaps = 4;
 int lapNum;
 unsigned long lapStartMillis;
-int lapBonusTimeBase = 5000;
-int lapBonusTimeInc = 1000;
+int lapBonusTimeBase = 8000;
+int lapBonusTimeInc = 2000;
 
 volatile bool xReleased;
 volatile bool yReleased;
@@ -187,15 +187,6 @@ byte fuelCustomChar[8] = {
 	0b00000,
 	0b00000
 };
-//	0b00001,
-//	0b00001,
-//	0b10001,
-//	0b10101,
-//	0b10101,
-//	0b11111,
-//	0b00001,
-//	0b00001
-//		};
 
 uint8_t finishLineMarker = 0;
 uint8_t finishLineOncomingMarker = 1;
@@ -269,6 +260,14 @@ void readJoystick() {
 	}
 }
 
+void enableButtonInterrupt(bool enable) {
+	if (enable) {
+		attachInterrupt(buttonInt, buttonISR, FALLING);
+	} else {
+		detachInterrupt(buttonInt);
+	}
+}
+
 void setup() {
   Serial.begin(115200);
   //first analogRead on a pin can take longer than normal, so do a quick read on each now
@@ -279,7 +278,8 @@ void setup() {
   Timer1.attachInterrupt(readJoystick);
 
   pinMode(buttonPin, INPUT_PULLUP);
-  attachInterrupt(buttonInt, buttonISR, FALLING);
+  //attachInterrupt(buttonInt, buttonISR, FALLING);
+  enableButtonInterrupt(true);
 
   lcd.begin(20,4);
   lcd.createChar(finishLineMarker, finishLineCustomChar);
@@ -458,8 +458,6 @@ void popLanes(byte sparseThreshold) {
 	struct laneSparsityStruct laneSparsities[numLanes];
 	struct laneSparsityStruct maxSparseLanes[numLanes];
 
-//Serial << "sparse check w/ thres: " << sparseThreshold << endl;
-
 	//check for sparsity in current content of lanes, producing array of sparcity counts (num positions from top, in which there are no oncomings)
 	for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
 		laneSparsity = 0;
@@ -503,14 +501,7 @@ void popLanes(byte sparseThreshold) {
 
 			}
 		}
-//		Serial << laneSparsity << ":";
 	}
-Serial << "maxSparsity: " << maxSparsity << endl;
-//Serial << "maxSparseLanes: ";
-//for (int x = 0; x < maxSparseLaneCt; x++) {
-//	Serial << maxSparseLanes[x].laneNum << ":";
-//}
-//Serial << endl;
 
 	//advance the current contents of the lanes
 	for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
@@ -530,11 +521,8 @@ Serial << "maxSparsity: " << maxSparsity << endl;
 		//if didn't get a sparse lane, just choose randomly
 		if (adjRand == 2*sparseLaneCt) {
 			newLane = random(numLanes);
-//			Serial << "random lane chosen (vs sparse lane): " << newLane << endl;
 		//if got a sparse lane, double the chances of getting a maxSparse lane, if not one of those
 		} else {
-//			Serial << "1st sparse lane chosen: " << sparseLanes[adjRand/2] << endl;
-//			Serial << "1st sparse lane chosen: " << laneSparsities[adjRand/2].laneNum << endl;
 			//check to see if newLane is one of the maxSparseLanes
 			for (int x = 0; x < maxSparseLaneCt; x++) {
 				if (maxSparseLanes[x].laneNum == laneSparsities[adjRand/2].laneNum) {
@@ -542,44 +530,28 @@ Serial << "maxSparsity: " << maxSparsity << endl;
 					break;
 				}
 			}
-			//if a max sparse lane not chosen, give it another 2 chances
+			//if a max sparse lane not chosen, give it another chance
 			if (!maxSparseLaneChosen) {
 				adjRand = random(sparseLaneCt*2);
 			}
-//			maxSparseLaneChosen = false;
-//			for (int x = 0; x < maxSparseLaneCt; x++) {
-//				if (maxSparseLanes[x].laneNum == laneSparsities[adjRand/2].laneNum) {
-//					maxSparseLaneChosen = true;
-//					break;
-//				}
-//			}
-//			//if a max sparse lane not chosen, give it another chance
-//			if (!maxSparseLaneChosen) {
-//				adjRand = random(sparseLaneCt*2);
-//			}
 			newLane = laneSparsities[adjRand/2].laneNum;
-//			Serial << "final sparse lane chosen: " << newLane << endl;
 
 		}
 
 	//otherwise, just pick a random lane
 	} else {
 		newLane = random(numLanes);
-//		Serial << "random lane chosen: " << newLane << endl;
 	}
 
 	lanes[newLane][maxLanePos] = NEW_ONCOMING_CAR;
 
 	if (playLevel > 1 && random(10) > 7-playLevel) {
-//		int b = random(playLevel);
-//		for (int a = 0; a < playLevel && a < numLanes; a++) {
 			int x = random(numLanes);
 			while (x == newLane) {
 				x = random(numLanes);
 			}
 			newLane = x;
 			lanes[newLane][maxLanePos] = NEW_ONCOMING_CAR;
-//		}
 	}
 
 	if (random(100) <= fuelMarkerPctChance) {
@@ -647,7 +619,9 @@ int checkForOncoming() {
     } else if (lanes[posX][posY].type == FUEL) {
     	//if got fuel, make it disappear
     	lanes[posX][posY] = NEW_EMPTY;
-    	score += fuelBonus;
+    	score = score + lapNum * scoreScale * fuelBonus;
+
+//    	showBonus("FUEL", lapNum * scoreScale * fuelBonus);
 
     	return FUEL;
     }
@@ -668,6 +642,23 @@ void checkForLap() {
   }
 }
 
+void showBonus(char message[], int points) {
+	enableButtonInterrupt(false);
+	for (int flashX = 0; flashX < 2; flashX++) {
+		lcd.setCursor(0,0);
+		lcd.print("+");
+		lcd.print(points);
+		lcd.print(" ");
+		lcd.print(message);
+		lcd.print("!");
+		delay(125);
+		lcd.setCursor(0,0);
+		lcd.print("           ");
+		delay(125);
+	}
+	enableButtonInterrupt(true);
+}
+
 void startNewLap() {
 	score = score + lapNum * lapScoreBonus;
 
@@ -686,18 +677,8 @@ void startNewLap() {
 		lapBonus = (lapBonusTargetMillis - (currMillis - lapStartMillis))/100;
 //		Serial << "time bonus: " <<  lapBonus << endl;
 		score = score + lapBonus;
-		lcd.setCursor(0,0);
-		lcd.print("+");
-		lcd.print(lapBonus);
-		lcd.print(" SPEED!");
-		delay(125);
-		lcd.setCursor(0,0);
-		lcd.print("           ");
-		delay(125);
-		lcd.setCursor(0,0);
-		lcd.print("+");
-		lcd.print(lapBonus);
-		lcd.print(" SPEED!");
+
+		showBonus("SPEED", lapBonus);
 
 		delay(500);
 
@@ -735,12 +716,10 @@ void adjustScore() {
     for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
        if (lanes[laneNum][posY - 1].type == ONCOMING_CAR && lanes[laneNum][posY - 1].passedFlag == false) {
     	   lanes[laneNum][posY - 1].passedFlag = true;
-//         score = score + posY * scoreScale;
     	   score = score + lapNum * scoreScale;
        }
     }
   }
-//  Serial << "Points: " << points << endl;
 }
 
 void loop() {
