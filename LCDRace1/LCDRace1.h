@@ -34,7 +34,7 @@ void clearPlayerMarker();
 void debugLanes();
 void initGame();
 void initLanes();
-void popLanes();
+void popLanes(byte);
 void printGameStatus();
 void printLanes();
 void printLap();

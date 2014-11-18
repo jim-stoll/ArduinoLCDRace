@@ -12,6 +12,8 @@
 #define D6_pin        6
 #define D7_pin        7
 
+byte sparseThreshold = 1;
+
 LiquidCrystal_I2C lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin, BACKLIGHT_PIN, POSITIVE);
 const int buttonPin = 2;
 const int buttonInt = 0;
@@ -196,7 +198,7 @@ void initGame() {
   lapNum = 0;
   initLanes();
   for (int x = 0; x < 10; x++) {
-	  popLanes();
+	  popLanes(sparseThreshold);
   }
   reset = false;
   gameStatus = INPLAY;
@@ -231,7 +233,7 @@ void readJoystick() {
 }
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   //first analogRead on a pin can take longer than normal, so do a quick read on each now
   analogRead(aXPin);
   analogRead(aYPin);
@@ -403,50 +405,127 @@ void debugLanes() {
 
 }
 
-void popLanes() {
+void popLanes(byte sparseThreshold) {
 	int newLane = 0;
-	int emptyLanes[numLanes];
-	int emptyLaneCt = 0;
-	bool foundEmptyLane = true;
-	int emptyLaneIdx = 0;
+	int laneSparsity = 0;
+	int sparseLanes[numLanes];
+	int sparseLaneCt = 0;
+	int sparseLaneIdx = 0;
+	int maxSparsity = 0;
+//	int maxSparseLane = 0;
+	int maxSparseLaneIdxs[numLanes];
+	int maxSparseLaneCt = 0;
+	int maxSparseLaneIdx = 0;
+	bool maxSparseLaneChosen = false;
+Serial << "sparse check w/ thres: " << sparseThreshold << endl;
 
-	//check for empty lanes
+for (int x = 0; x < numLanes; x++) {
+	maxSparseLaneIdxs[x] = 0;
+}
+
+	//check for sparsity in current content of lanes, producing array of sparcity counts (num positions from top, in which there are no oncomings)
 	for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
-		foundEmptyLane = true;
-		for (int posNum = minLanePos; posNum < numPos; posNum++) {
-			if (lanes[laneNum][posNum] > 0) {
-				foundEmptyLane = false;
+		laneSparsity = 0;
+		for (int posNum = maxLanePos; posNum >= minLanePos; posNum--) {
+			if (lanes[laneNum][posNum] == 1) {
 				break;
+			} else {
+				laneSparsity++;
 			}
 		}
-		if (foundEmptyLane) {
-			emptyLanes[emptyLaneIdx] = laneNum;
-			emptyLaneCt = emptyLaneCt + 1;
-			emptyLaneIdx = emptyLaneIdx + 1;
+		//if blank spots from top exceeds the threshold, note the lane
+		if (laneSparsity >= sparseThreshold) {
+			sparseLanes[sparseLaneIdx] = laneNum;
+			sparseLaneIdx++;
+			sparseLaneCt++;
+
+//			//track which lane(s) have the max empty spots
+			if (laneSparsity >= maxSparsity) {
+//				Serial << "maxSparseLanes before shift. ct: " << maxSparseLaneCt << endl;
+//				for (int x = 0; x < maxSparseLaneCt; x++) {
+//					Serial << maxSparseLanes[x] << ":";
+//				}
+//				Serial << endl;
+				maxSparsity = laneSparsity;
+				maxSparseLaneCt++;
+//				if (maxSparseLaneCt > 0) {
+//					for (int x = 0; x < numLanes; x++) {
+//						if (maxSparseLanes[x] < maxSparsity) {
+//							//shift the array contents, to remove the element that is no longer the lane w/ the max
+//							for (int y = x; y < numLanes-1; y++) {
+//								maxSparseLanes[y] = maxSparseLanes[y+1];
+//							}
+//							maxSparseLanes[numLanes-1] = 0; //last element will have zero shifted in
+//						}
+//	//					if (maxSparseLaneCt >= 0) {
+//	//					}
+//					}
+//					maxSparseLaneCt--;
+//				}
+////				maxSparsity = laneSparsity;
+				maxSparseLaneIdxs[maxSparseLaneIdx] = laneNum;
+////				maxSparseLaneCt++;
+//				Serial << "maxSparseLanes after shift. ct: " << maxSparseLaneCt << endl;
+//				for (int x = 0; x < maxSparseLaneCt; x++) {
+//					Serial << maxSparseLaneIdxs[x] << ":";
+//				}
+//				Serial << endl;
+
+			}
 		}
+		Serial << laneSparsity << ":";
 	}
+Serial << "maxSparsity: " << maxSparsity << endl;
+Serial << "maxSparseLanes: ";
+for (int x = 0; x < maxSparseLaneCt; x++) {
+	Serial << maxSparseLaneIdxs[x] << ":";
+}
+Serial << endl;
 
-	//fill a random empty lane, if there are empty lanes
-	if (emptyLaneCt > 0) {
-		int emptyLaneIdx = random(emptyLaneCt);
-		newLane = emptyLanes[emptyLaneIdx];
-	//otherwise, just pick a random lane
-	} else {
-		newLane = random(numLanes);
-	}
-
+	//advance the current contents of the lanes
 	for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
 		for (int posNum = minLanePos; posNum < maxLanePos; posNum++) {
-			lanes[laneNum][posNum] = 0;
-			if (lanes[laneNum][posNum+1] > 0) {
-				lanes[laneNum][posNum] = lanes[laneNum][posNum+1];
-			}
+			lanes[laneNum][posNum] = lanes[laneNum][posNum+1];
 		}
 		lanes[laneNum][maxLanePos] = 0;
 	}
 
-	lanes[newLane][maxLanePos] = 1;
+	//if sparse lanes found
+	if (sparseLaneCt > 0) {
+		//let there be a chance to pick a non-sparse lane, to prevent patterns from occurring
+		//double the odds of choosing a sparse lane, though
+		int adjRand = random(2*sparseLaneCt + 1);
 
+		//allow a chance for a non-sparse lane to be chosen (1/2*sparseLaneCt)
+		//if didn't get a sparse lane, just choose randomly
+		if (adjRand == 2*sparseLaneCt) {
+			newLane = random(numLanes);
+			Serial << "random lane chosen: " << newLane << endl;
+		//if got a sparse lane, double the chances of getting a maxSparse lane, if not one of those
+		} else {
+			Serial << "1st sparse lane chosen: " << sparseLanes[adjRand/2] << endl;
+			//check to see if newLane is one of the maxSparseLanes
+			for (int x = 0; x < maxSparseLaneCt; x++) {
+				if (adjRand/2 == x) {
+					maxSparseLaneChosen = true;
+					break;
+				}
+			}
+			//if a max sparse lane not chosen, give it another chance
+			if (!maxSparseLaneChosen) {
+				adjRand = random(sparseLaneCt*2);
+			}
+			newLane = sparseLanes[adjRand/2];
+			Serial << "final sparse lane chosen: " << newLane << endl;
+		}
+
+	//otherwise, just pick a random lane
+	} else {
+		newLane = random(numLanes);
+		Serial << "random lane chosen: " << newLane << endl;
+	}
+
+	lanes[newLane][maxLanePos] = 1;
 }
 
 void printGameStatus() {
@@ -488,15 +567,15 @@ void printGameStatus() {
 }
 
 bool checkForCollision() {
-  for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
-    if (lanes[posX][posY] > 0) {
-    	gameStatus = WRECK;
-
-		printGameStatus();
-
-		return true;
-    }
-  }
+//  for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
+//    if (lanes[posX][posY] == 1) {
+//    	gameStatus = WRECK;
+//
+//		printGameStatus();
+//
+//		return true;
+//    }
+//  }
 
   return false;
 }
@@ -600,7 +679,7 @@ void loop() {
 		if (gameStatus == INPLAY) {
 			if (millis() - lastOncomingMillis > oncomingUpdateMillis) {
 			  lastOncomingMillis = millis();
-			  popLanes();
+			  popLanes(sparseThreshold);
 			//    debugLanes();
 			  printLanes();
 			  adjustScore();
