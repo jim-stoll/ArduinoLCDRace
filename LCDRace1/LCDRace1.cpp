@@ -12,7 +12,7 @@
 #define D6_pin        6
 #define D7_pin        7
 
-byte sparseThreshold = 1;
+byte sparseThreshold = 2;
 
 LiquidCrystal_I2C lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin, BACKLIGHT_PIN, POSITIVE);
 const int buttonPin = 2;
@@ -408,20 +408,20 @@ void debugLanes() {
 void popLanes(byte sparseThreshold) {
 	int newLane = 0;
 	int laneSparsity = 0;
-	int sparseLanes[numLanes];
 	int sparseLaneCt = 0;
 	int sparseLaneIdx = 0;
 	int maxSparsity = 0;
-//	int maxSparseLane = 0;
-	int maxSparseLaneIdxs[numLanes];
 	int maxSparseLaneCt = 0;
-	int maxSparseLaneIdx = 0;
+	int maxSparseLanesIdx = 0;
 	bool maxSparseLaneChosen = false;
-Serial << "sparse check w/ thres: " << sparseThreshold << endl;
+	struct laneSparsityStruct {
+		int laneNum;
+		int sparseCt;
+	};
+	struct laneSparsityStruct laneSparsities[numLanes];
+	struct laneSparsityStruct maxSparseLanes[numLanes];
 
-for (int x = 0; x < numLanes; x++) {
-	maxSparseLaneIdxs[x] = 0;
-}
+//Serial << "sparse check w/ thres: " << sparseThreshold << endl;
 
 	//check for sparsity in current content of lanes, producing array of sparcity counts (num positions from top, in which there are no oncomings)
 	for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
@@ -435,52 +435,45 @@ for (int x = 0; x < numLanes; x++) {
 		}
 		//if blank spots from top exceeds the threshold, note the lane
 		if (laneSparsity >= sparseThreshold) {
-			sparseLanes[sparseLaneIdx] = laneNum;
+			laneSparsities[sparseLaneIdx].laneNum = laneNum;
+			laneSparsities[sparseLaneIdx].sparseCt = laneSparsity;
+
 			sparseLaneIdx++;
 			sparseLaneCt++;
 
-//			//track which lane(s) have the max empty spots
+			//track which lane(s) have the max empty spots
 			if (laneSparsity >= maxSparsity) {
-//				Serial << "maxSparseLanes before shift. ct: " << maxSparseLaneCt << endl;
-//				for (int x = 0; x < maxSparseLaneCt; x++) {
-//					Serial << maxSparseLanes[x] << ":";
-//				}
-//				Serial << endl;
 				maxSparsity = laneSparsity;
+				if (maxSparseLaneCt > 0) {
+					for (int x = 0; x < maxSparseLaneCt; x++) {
+						if (maxSparseLanes[x].sparseCt < maxSparsity) {
+							//shift the array contents, to remove the element that is no longer the lane w/ the max
+							for (int y = x; y < numLanes-1; y++) {
+								maxSparseLanes[y] = maxSparseLanes[y+1];
+							}
+							maxSparseLanes[numLanes-1].laneNum = 0; //last element will have zero shifted in
+							maxSparseLanes[numLanes-1].sparseCt = 0;
+						}
+					}
+					maxSparseLaneCt--;
+					maxSparseLanesIdx--;
+				}
+
+				maxSparseLanes[maxSparseLanesIdx].laneNum = laneNum;
+				maxSparseLanes[maxSparseLanesIdx].sparseCt = maxSparsity;
 				maxSparseLaneCt++;
-//				if (maxSparseLaneCt > 0) {
-//					for (int x = 0; x < numLanes; x++) {
-//						if (maxSparseLanes[x] < maxSparsity) {
-//							//shift the array contents, to remove the element that is no longer the lane w/ the max
-//							for (int y = x; y < numLanes-1; y++) {
-//								maxSparseLanes[y] = maxSparseLanes[y+1];
-//							}
-//							maxSparseLanes[numLanes-1] = 0; //last element will have zero shifted in
-//						}
-//	//					if (maxSparseLaneCt >= 0) {
-//	//					}
-//					}
-//					maxSparseLaneCt--;
-//				}
-////				maxSparsity = laneSparsity;
-				maxSparseLaneIdxs[maxSparseLaneIdx] = laneNum;
-////				maxSparseLaneCt++;
-//				Serial << "maxSparseLanes after shift. ct: " << maxSparseLaneCt << endl;
-//				for (int x = 0; x < maxSparseLaneCt; x++) {
-//					Serial << maxSparseLaneIdxs[x] << ":";
-//				}
-//				Serial << endl;
+				maxSparseLanesIdx++;
 
 			}
 		}
-		Serial << laneSparsity << ":";
+//		Serial << laneSparsity << ":";
 	}
 Serial << "maxSparsity: " << maxSparsity << endl;
-Serial << "maxSparseLanes: ";
-for (int x = 0; x < maxSparseLaneCt; x++) {
-	Serial << maxSparseLaneIdxs[x] << ":";
-}
-Serial << endl;
+//Serial << "maxSparseLanes: ";
+//for (int x = 0; x < maxSparseLaneCt; x++) {
+//	Serial << maxSparseLanes[x].laneNum << ":";
+//}
+//Serial << endl;
 
 	//advance the current contents of the lanes
 	for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
@@ -500,13 +493,25 @@ Serial << endl;
 		//if didn't get a sparse lane, just choose randomly
 		if (adjRand == 2*sparseLaneCt) {
 			newLane = random(numLanes);
-			Serial << "random lane chosen: " << newLane << endl;
+//			Serial << "random lane chosen (vs sparse lane): " << newLane << endl;
 		//if got a sparse lane, double the chances of getting a maxSparse lane, if not one of those
 		} else {
-			Serial << "1st sparse lane chosen: " << sparseLanes[adjRand/2] << endl;
+//			Serial << "1st sparse lane chosen: " << sparseLanes[adjRand/2] << endl;
+//			Serial << "1st sparse lane chosen: " << laneSparsities[adjRand/2].laneNum << endl;
 			//check to see if newLane is one of the maxSparseLanes
 			for (int x = 0; x < maxSparseLaneCt; x++) {
-				if (adjRand/2 == x) {
+				if (maxSparseLanes[x].laneNum == laneSparsities[adjRand/2].laneNum) {
+					maxSparseLaneChosen = true;
+					break;
+				}
+			}
+			//if a max sparse lane not chosen, give it another 2 chances
+			if (!maxSparseLaneChosen) {
+				adjRand = random(sparseLaneCt*2);
+			}
+			maxSparseLaneChosen = false;
+			for (int x = 0; x < maxSparseLaneCt; x++) {
+				if (maxSparseLanes[x].laneNum == laneSparsities[adjRand/2].laneNum) {
 					maxSparseLaneChosen = true;
 					break;
 				}
@@ -515,14 +520,15 @@ Serial << endl;
 			if (!maxSparseLaneChosen) {
 				adjRand = random(sparseLaneCt*2);
 			}
-			newLane = sparseLanes[adjRand/2];
-			Serial << "final sparse lane chosen: " << newLane << endl;
+			newLane = laneSparsities[adjRand/2].laneNum;
+//			Serial << "final sparse lane chosen: " << newLane << endl;
+
 		}
 
 	//otherwise, just pick a random lane
 	} else {
 		newLane = random(numLanes);
-		Serial << "random lane chosen: " << newLane << endl;
+//		Serial << "random lane chosen: " << newLane << endl;
 	}
 
 	lanes[newLane][maxLanePos] = 1;
