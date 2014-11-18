@@ -69,6 +69,7 @@ int joystickThreshPct = 25; //could be pref for responsiveness of joystick
 int lapScoreBonus = 10;
 const int joystickXAutorepeatDelayMillis = 200; //could be pref for responsiveness of car
 const int joystickYAutorepeatDelayMillis = 200;
+byte playLevel = 2;
 // end config params
 
 unsigned long oncomingUpdateMillis = oncomingUpdateMillisBase;
@@ -509,17 +510,17 @@ Serial << "maxSparsity: " << maxSparsity << endl;
 			if (!maxSparseLaneChosen) {
 				adjRand = random(sparseLaneCt*2);
 			}
-			maxSparseLaneChosen = false;
-			for (int x = 0; x < maxSparseLaneCt; x++) {
-				if (maxSparseLanes[x].laneNum == laneSparsities[adjRand/2].laneNum) {
-					maxSparseLaneChosen = true;
-					break;
-				}
-			}
-			//if a max sparse lane not chosen, give it another chance
-			if (!maxSparseLaneChosen) {
-				adjRand = random(sparseLaneCt*2);
-			}
+//			maxSparseLaneChosen = false;
+//			for (int x = 0; x < maxSparseLaneCt; x++) {
+//				if (maxSparseLanes[x].laneNum == laneSparsities[adjRand/2].laneNum) {
+//					maxSparseLaneChosen = true;
+//					break;
+//				}
+//			}
+//			//if a max sparse lane not chosen, give it another chance
+//			if (!maxSparseLaneChosen) {
+//				adjRand = random(sparseLaneCt*2);
+//			}
 			newLane = laneSparsities[adjRand/2].laneNum;
 //			Serial << "final sparse lane chosen: " << newLane << endl;
 
@@ -532,6 +533,18 @@ Serial << "maxSparsity: " << maxSparsity << endl;
 	}
 
 	lanes[newLane][maxLanePos] = 1;
+
+	if (playLevel > 0 && random(10) > 7-playLevel) {
+//		int b = random(playLevel);
+//		for (int a = 0; a < playLevel && a < numLanes; a++) {
+			int x = random(numLanes);
+			while (x == newLane) {
+				x = random(numLanes);
+			}
+			newLane = x;
+			lanes[newLane][maxLanePos] = 1;
+//		}
+	}
 }
 
 void printGameStatus() {
