@@ -12,8 +12,6 @@
 #define D6_pin        6
 #define D7_pin        7
 
-byte sparseThreshold = 2;
-
 LiquidCrystal_I2C lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin, BACKLIGHT_PIN, POSITIVE);
 const int buttonPin = 2;
 const int buttonInt = 0;
@@ -35,6 +33,9 @@ const int lapCol = 0;
 const int lapRow = 3;
 const int scoreCol = 0;
 const int scoreRow = 0;
+const byte oncomingEmpty = 0;
+const byte oncomingCar = 1;
+const byte oncomingFuel = 2;
 const unsigned long switchDebounceMillis = 200;
 const unsigned long splashDelayMillis = 1000;
 unsigned long lastOncomingMillis = 0;
@@ -45,11 +46,22 @@ enum GameStatus {WRECK, WIN, INPLAY};
 const char *gameStatusStrings[] = {"CRASH!!", "WIN!!", "       "};
 GameStatus gameStatus;
 
+enum OncomingType {EMPTY, ONCOMING_CAR, FUEL};
+
+struct lanePositionStruct {
+	OncomingType type;
+	bool passedFlag;
+};
+
+const struct lanePositionStruct NEW_EMPTY = {EMPTY, false};
+const struct lanePositionStruct NEW_ONCOMING_CAR = {ONCOMING_CAR, false};
+const struct lanePositionStruct NEW_FUEL = {FUEL, false};
+
 int posX, posY;
 const byte aXPin = A0;
 const byte aYPin = A1;
 volatile int aX, aY;
-byte lanes[numLanes][numPos];
+lanePositionStruct lanes[numLanes][numPos];
 int score = 0;
 bool reset = true;
 int numLaps = 4;
@@ -69,7 +81,10 @@ int joystickThreshPct = 25; //could be pref for responsiveness of joystick
 int lapScoreBonus = 10;
 const int joystickXAutorepeatDelayMillis = 200; //could be pref for responsiveness of car
 const int joystickYAutorepeatDelayMillis = 200;
-byte playLevel = 2;
+byte playLevel = 1;
+byte laneSparsityThreshold = 2;
+const byte fuelMarkerPctChance = 5;
+int fuelBonus = 10;
 // end config params
 
 unsigned long oncomingUpdateMillis = oncomingUpdateMillisBase;
@@ -162,6 +177,26 @@ byte lap4CustomChar[8] = {
 	0b00000
 };
 
+byte fuelCustomChar[8] = {
+	0b00000,
+	0b00000,
+	0b10000,
+	0b10100,
+	0b10100,
+	0b11111,
+	0b00000,
+	0b00000
+};
+//	0b00001,
+//	0b00001,
+//	0b10001,
+//	0b10101,
+//	0b10101,
+//	0b11111,
+//	0b00001,
+//	0b00001
+//		};
+
 uint8_t finishLineMarker = 0;
 uint8_t finishLineOncomingMarker = 1;
 uint8_t playerMarker = 2;
@@ -169,13 +204,14 @@ uint8_t oncomingMarker = 3;
 uint8_t wreckMarker = 4;
 uint8_t lap3Marker = 5;
 uint8_t lap4Marker = 6;
+uint8_t fuelMarker = 7;
 //NOTE - using this array based on gameState - the 'win' marker and the 'inplay' marker are the same marker, so using it in 2 places in this array
 uint8_t playerMarkers[] = {wreckMarker, playerMarker, playerMarker};
 
 void initLanes() {
   for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
     for (int posNum = minLanePos; posNum < numPos; posNum ++) {
-      lanes[laneNum][posNum] = 0;
+      lanes[laneNum][posNum] = NEW_EMPTY;
     }
   }
 }
@@ -199,7 +235,7 @@ void initGame() {
   lapNum = 0;
   initLanes();
   for (int x = 0; x < 10; x++) {
-	  popLanes(sparseThreshold);
+	  popLanes(laneSparsityThreshold);
   }
   reset = false;
   gameStatus = INPLAY;
@@ -253,6 +289,7 @@ void setup() {
   lcd.createChar(wreckMarker, wreckCustomChar);
   lcd.createChar(lap3Marker, lap3CustomChar);
   lcd.createChar(lap4Marker, lap4CustomChar);
+  lcd.createChar(fuelMarker, fuelCustomChar);
 }
 
 void clearPlayerMarker() {
@@ -373,19 +410,22 @@ void printLanes() {
   printScore();
   for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
     for (int posNum = minLanePos; posNum < numPos; posNum++) {
-      if (lanes[laneNum][posNum] > 0) {
         lcd.setCursor((19-maxLanePos) + maxLanePos - posNum, maxLaneNum - laneNum);
-        if (posNum < maxPosNum) {
-        	lcd.write(oncomingMarker);
-        } else {
-        	lcd.write(finishLineOncomingMarker);
-        }
-      } else {
-    	  if (posNum == maxPosNum) {
-    	      lcd.setCursor((19-maxLanePos) + maxLanePos - posNum, maxLaneNum - laneNum);
-    		  lcd.write(finishLineMarker);
-    	  }
-      }
+		if (lanes[laneNum][posNum].type == ONCOMING_CAR) {
+			if (posNum < maxPosNum) {
+				lcd.write(oncomingMarker);
+			} else {
+				lcd.write(finishLineOncomingMarker);
+			}
+		} else if (lanes[laneNum][posNum].type == FUEL) {
+			if (posNum < maxPosNum) {
+				lcd.write(fuelMarker);
+			}
+		} else if (lanes[laneNum][posNum].type == EMPTY) {
+			if (posNum == maxPosNum) {
+				lcd.write(finishLineMarker);
+			}
+		}
     }
   }
 
@@ -395,11 +435,7 @@ void debugLanes() {
   for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
     Serial << "L" << laneNum << ": ";
     for (int posNum = minLanePos; posNum < numPos; posNum++) {
-      if (lanes[laneNum][posNum] > 0) {
-        Serial << "1";
-      } else {
-        Serial << "0";
-      }
+    	Serial << lanes[laneNum][posNum].type;
     }
     Serial << endl;
   }
@@ -428,7 +464,7 @@ void popLanes(byte sparseThreshold) {
 	for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
 		laneSparsity = 0;
 		for (int posNum = maxLanePos; posNum >= minLanePos; posNum--) {
-			if (lanes[laneNum][posNum] == 1) {
+			if (lanes[laneNum][posNum].type == ONCOMING_CAR) {
 				break;
 			} else {
 				laneSparsity++;
@@ -481,7 +517,7 @@ Serial << "maxSparsity: " << maxSparsity << endl;
 		for (int posNum = minLanePos; posNum < maxLanePos; posNum++) {
 			lanes[laneNum][posNum] = lanes[laneNum][posNum+1];
 		}
-		lanes[laneNum][maxLanePos] = 0;
+		lanes[laneNum][maxLanePos] = NEW_EMPTY;
 	}
 
 	//if sparse lanes found
@@ -532,9 +568,9 @@ Serial << "maxSparsity: " << maxSparsity << endl;
 //		Serial << "random lane chosen: " << newLane << endl;
 	}
 
-	lanes[newLane][maxLanePos] = 1;
+	lanes[newLane][maxLanePos] = NEW_ONCOMING_CAR;
 
-	if (playLevel > 0 && random(10) > 7-playLevel) {
+	if (playLevel > 1 && random(10) > 7-playLevel) {
 //		int b = random(playLevel);
 //		for (int a = 0; a < playLevel && a < numLanes; a++) {
 			int x = random(numLanes);
@@ -542,8 +578,23 @@ Serial << "maxSparsity: " << maxSparsity << endl;
 				x = random(numLanes);
 			}
 			newLane = x;
-			lanes[newLane][maxLanePos] = 1;
+			lanes[newLane][maxLanePos] = NEW_ONCOMING_CAR;
 //		}
+	}
+
+	if (random(100) <= fuelMarkerPctChance) {
+		int emptyLanes[numLanes];
+		int emptyLaneIdx = 0;
+		for (int x = 0; x < numLanes; x++) {
+			if (lanes[x][maxLanePos].type == EMPTY) {
+				emptyLanes[emptyLaneIdx] = x;
+				emptyLaneIdx++;
+			}
+		}
+		if (emptyLaneIdx > 0) {
+			int fuelLane = emptyLanes[random(emptyLaneIdx)];
+			lanes[fuelLane][maxLanePos] = NEW_FUEL;
+		}
 	}
 }
 
@@ -585,18 +636,24 @@ void printGameStatus() {
 	}
 }
 
-bool checkForCollision() {
-//  for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
-//    if (lanes[posX][posY] == 1) {
-//    	gameStatus = WRECK;
-//
-//		printGameStatus();
-//
-//		return true;
-//    }
-//  }
+int checkForOncoming() {
+  for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
+    if (lanes[posX][posY].type == ONCOMING_CAR) {
+    	gameStatus = WRECK;
 
-  return false;
+		printGameStatus();
+
+		return ONCOMING_CAR;
+    } else if (lanes[posX][posY].type == FUEL) {
+    	//if got fuel, make it disappear
+    	lanes[posX][posY] = NEW_EMPTY;
+    	score += fuelBonus;
+
+    	return FUEL;
+    }
+  }
+
+  return EMPTY;
 }
 
 //**TODO: might want to split out the lap vs win functionality here
@@ -648,16 +705,14 @@ void startNewLap() {
 
 	lapNum = lapNum + 1;
 
-	//clear pass flags, so new lap will give points for all cars that are passed
-	//clear bottom rows to avoid iimediate collision at start of next lap
+	//clear pass flags, so new lap will give points for all cars that are passed on this lap
+	//clear bottom rows to avoid immediate collision at start of next lap
 	for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
 		for (int posNum = minLanePos; posNum <= maxLanePos; posNum++) {
-			if (lanes[laneNum][posNum] > 0) {
-				lanes[laneNum][posNum] = 1;
-			}
+			lanes[laneNum][posNum].passedFlag = false;
 
 			if (posNum <= lapClearPos) {
-				lanes[laneNum][posNum] = 0;
+				lanes[laneNum][posNum] = NEW_EMPTY;
 			}
 		}
 	}
@@ -678,8 +733,8 @@ void adjustOncomingSpeed() {
 void adjustScore() {
   if (posY > minLanePos) {
     for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
-       if (lanes[laneNum][posY - 1] == 1) {
-    	   lanes[laneNum][posY - 1] = 2;
+       if (lanes[laneNum][posY - 1].type == ONCOMING_CAR && lanes[laneNum][posY - 1].passedFlag == false) {
+    	   lanes[laneNum][posY - 1].passedFlag = true;
 //         score = score + posY * scoreScale;
     	   score = score + lapNum * scoreScale;
        }
@@ -698,13 +753,13 @@ void loop() {
 		if (gameStatus == INPLAY) {
 			if (millis() - lastOncomingMillis > oncomingUpdateMillis) {
 			  lastOncomingMillis = millis();
-			  popLanes(sparseThreshold);
+			  popLanes(laneSparsityThreshold);
 			//    debugLanes();
 			  printLanes();
 			  adjustScore();
 			}
 
-			if (!checkForCollision()) {
+			if (checkForOncoming() != ONCOMING_CAR) {
 				if (millis() - lastPosChangeMillis > posChangeUpdateMillis) {
 					lastPosChangeMillis = millis();
 					clearPlayerMarker();
