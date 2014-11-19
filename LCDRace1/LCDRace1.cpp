@@ -368,13 +368,29 @@ void printPlayerMarker() {
   lcd.write(playerMarkers[gameStatus]);
 }
 
+int pnpoly(int nvert, float *vertx, float *verty, float testx, float testy) {
+  int i, j, c = 0;
+  for (i = 0, j = nvert-1; i < nvert; j = i++) {
+    if ( ((verty[i]>testy) != (verty[j]>testy)) &&
+     (testx < (vertx[j]-vertx[i]) * (testy-verty[i]) / (verty[j]-verty[i]) + vertx[i]) )
+       c = !c;
+  }
+  return c;
+}
 void adjustPos() {
 	static unsigned long lastMillis = 0;
 unsigned long joystickAutorepeatDelayMillis = 200;
 
 	//skip interrupts, so don't twiddle w/ values as we're working w/ them
 	noInterrupts();
+	int r = 255;
+	int s = 2*r*.4142;
+	int centerX = 511;
+	int centerY = 511;
+	float polyXPoints[8] = {centerX - s/2, centerX + s/2, centerX + r, centerX + r, centerX + s/2, centerX - s/2, centerX - r, centerX - r};
+	float polyYPoints[8] = {centerY + r, centerY + r, centerY + s/2, centerY - s/2, centerY - r, centerY - r, centerY - s/2, centerY + s/2};
 
+Serial << aX << ":" << aY << ":" << pnpoly(8, polyXPoints, polyYPoints, aX, aY) << endl;
 	//if this is an input that started from the neutral position, react immediately
 	// if this is an autorepeat (ie, stick hasn't been released back to neutral since last pos check), then delay the autorepeat to avoid overcontrol
 	if (
@@ -608,7 +624,7 @@ void popLanes(byte sparseThreshold) {
 		newLane = random(numLanes);
 	}
 
-	lanes[newLane][maxLanePos] = NEW_ONCOMING_CAR;
+//	lanes[newLane][maxLanePos] = NEW_ONCOMING_CAR;
 
 	if (playLevel > 1 && random(10) > 7-playLevel) {
 			int x = random(numLanes);
@@ -616,7 +632,7 @@ void popLanes(byte sparseThreshold) {
 				x = random(numLanes);
 			}
 			newLane = x;
-			lanes[newLane][maxLanePos] = NEW_ONCOMING_CAR;
+//			lanes[newLane][maxLanePos] = NEW_ONCOMING_CAR;
 	}
 
 	if (random(100) <= fuelMarkerPctChance) {
