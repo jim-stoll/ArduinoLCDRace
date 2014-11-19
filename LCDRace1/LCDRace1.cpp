@@ -79,6 +79,7 @@ int lapClearPos = 3;
 int speedChangeInc = 10; //could  be adjusted for harder levels - controls speed diff as move up track, as well as in accumulated laps
 const unsigned long oncomingUpdateMillisBase = 1000; //could also be shortened for higher levels
 int joystickThreshPct = 25; //could be pref for responsiveness of joystick
+unsigned long joystickReadMicros = 100000;
 int lapScoreBonus = 10;
 const int joystickXAutorepeatDelayMillis = 200; //could be pref for responsiveness of car
 const int joystickYAutorepeatDelayMillis = 200;
@@ -92,8 +93,8 @@ int fuelBonus = 10;
 
 unsigned long oncomingUpdateMillis = oncomingUpdateMillisBase;
 
-int loThresh = 1023*joystickThreshPct/100.0;
-int hiThresh = 1023*(1.0-joystickThreshPct/100.0);
+int loThresh = 511 - 512*(joystickThreshPct/100.0);//1023*joystickThreshPct/100.0;
+int hiThresh = 511 + 512*(joystickThreshPct/100.0);//1023*(1.0-joystickThreshPct/100.0);
 
 byte finishLineCustomChar[8] = {
 	0b00001,
@@ -337,7 +338,7 @@ void setup() {
   analogRead(aXPin);
   analogRead(aYPin);
 
-  Timer1.initialize(50000);
+  Timer1.initialize(joystickReadMicros);
   Timer1.attachInterrupt(readJoystick);
 
   pinMode(buttonPin, INPUT_PULLUP);
@@ -368,17 +369,20 @@ void printPlayerMarker() {
 }
 
 void adjustPos() {
-	//time counters for autorepeat delay (to avoid overcontrolling on autorepeat)
-	static unsigned long lastXMillis = 0;
-	static unsigned long lastYMillis = 0;
+	static unsigned long lastMillis = 0;
+unsigned long joystickAutorepeatDelayMillis = 200;
 
 	//skip interrupts, so don't twiddle w/ values as we're working w/ them
 	noInterrupts();
 
 	//if this is an input that started from the neutral position, react immediately
 	// if this is an autorepeat (ie, stick hasn't been released back to neutral since last pos check), then delay the autorepeat to avoid overcontrol
-	if ((aX < loThresh || aX > hiThresh) && (xReleased || (millis() - lastXMillis > joystickXAutorepeatDelayMillis))) {
-		lastXMillis = millis();
+	if (
+			((aX < loThresh || aX > hiThresh) && (xReleased || (millis() - lastMillis > joystickAutorepeatDelayMillis)))
+			||
+			((aY < loThresh || aY > hiThresh) && (yReleased || (millis() - lastMillis > joystickAutorepeatDelayMillis)))
+		) {
+		lastMillis = millis();
 
 		if (aX > hiThresh) {
 			posX = posX + 1;
@@ -391,10 +395,6 @@ void adjustPos() {
 			  posX = posXMin;
 			}
 		}
-	}
-
-	if ((aY < loThresh || aY > hiThresh) && (yReleased || (millis() - lastYMillis > joystickYAutorepeatDelayMillis))) {
-		lastYMillis = millis();
 		if (aY > hiThresh) {
 			posY = posY + 1;
 			if (posY > posYMax) {
