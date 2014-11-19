@@ -71,8 +71,8 @@ int lapBonusTimeBase = 8000;
 int lapBonusTimeInc = 2000;
 bool buttonPressed = false;
 
-volatile bool xReleased;
-volatile bool yReleased;
+//volatile bool xReleased;
+//volatile bool yReleased;
 
 //these are potential configurable items, such as might be set/changed based on difficulty level, and/or via menu prefs (such as joystick threshold pct)
 int lapClearPos = 3;
@@ -240,7 +240,7 @@ void selectLevel() {
 	while (!buttonPressed) {
 		lcd.setCursor(7,0);
 		lcd.print(playLevel);
-		if (((aY < loThresh || aY > hiThresh) && (yReleased || (millis() - lastYMillis > joystickYAutorepeatDelayMillis))) || (aX < loThresh || aX > hiThresh) && (xReleased || (millis() - lastXMillis > joystickXAutorepeatDelayMillis))) {
+		if (((aY < loThresh || aY > hiThresh) && ((millis() - lastYMillis > joystickYAutorepeatDelayMillis))) || (aX < loThresh || aX > hiThresh) && ((millis() - lastXMillis > joystickXAutorepeatDelayMillis))) {
 			lastXMillis = millis();
 			lastYMillis = millis();
 
@@ -311,17 +311,17 @@ void readJoystick() {
 	aX = analogRead(aXPin);
 	aY = 1023 - analogRead(aYPin);
 
-	//track whether joystick has been released back to neutral, for autorepeat purposes
-	if (aX > loThresh && aX < hiThresh) {
-		xReleased = true;
-	} else {
-		xReleased = false;
-	}
-	if (aY > loThresh && aY < hiThresh) {
-		yReleased = true;
-	} else {
-		yReleased = false;
-	}
+//	//track whether joystick has been released back to neutral, for autorepeat purposes
+//	if (aX > loThresh && aX < hiThresh) {
+//		xReleased = true;
+//	} else {
+//		xReleased = false;
+//	}
+//	if (aY > loThresh && aY < hiThresh) {
+//		yReleased = true;
+//	} else {
+//		yReleased = false;
+//	}
 }
 
 void enableButtonInterrupt(bool enable) {
@@ -377,52 +377,118 @@ int pnpoly(int nvert, float *vertx, float *verty, float testx, float testy) {
   }
   return c;
 }
+
 void adjustPos() {
 	static unsigned long lastMillis = 0;
 unsigned long joystickAutorepeatDelayMillis = 200;
+int q = 0;
+	static float rBnd = 512;
+	static float r = 256;
+	static float hs = r*.4142;
+	static float centerX = 512;
+	static float centerY = 512;
+	static bool released = true;
 
-	//skip interrupts, so don't twiddle w/ values as we're working w/ them
+	//NOTE: adding extra vertex to base of each 4-vertext polygon, to standardize array size
+	static float polyXPoints[8][5] = {
+	/*0*/	{centerX-hs, centerX+hs, centerX+hs, centerX, centerX-hs},
+	/*1*/	{centerX+hs, centerX+rBnd, centerX+rBnd, centerX+r, centerX+hs},
+	/*2*/	{centerX+r, centerX+rBnd, centerX+rBnd, centerX+r, centerX+r},
+	/*3*/	{centerX+r, centerX+rBnd, centerX+rBnd, centerX+hs, centerX+hs},
+	/*4*/	{centerX-hs, centerX, centerX+hs, centerX+hs, centerX-hs},
+	/*5*/	{centerX-rBnd, centerX-r, centerX-hs, centerX-hs, centerX-rBnd},
+	/*6*/	{centerX-rBnd, centerX-r, centerX-r, centerX-r, centerX-rBnd},
+	/*7*/	{centerX-rBnd, centerX-hs, centerX-hs, centerX-r, centerX-rBnd}
+	};
+
+	static float polyYPoints[8][5] = {
+	/*0*/	{centerY+rBnd, centerY+rBnd, centerY+r, centerY+r, centerY+r},
+	/*1*/	{centerY+rBnd, centerY+rBnd, centerY+hs, centerY+hs, centerY+r},
+	/*2*/	{centerY+hs, centerY+hs, centerY-hs, centerY-hs, centerY},
+	/*3*/	{centerY-hs, centerY-hs, centerY-rBnd, centerY-rBnd, centerY-r},
+	/*4*/	{centerY-r, centerY-r, centerY-r, centerY-rBnd, centerY-rBnd},
+	/*5*/	{centerY-hs, centerY-hs, centerY-r, centerY-rBnd, centerY-rBnd},
+	/*6*/	{centerY+hs, centerY+hs, centerY, centerY-hs, centerY-hs},
+	/*7*/	{centerY+rBnd, centerY+rBnd, centerY+r, centerY+hs, centerY+hs}
+
+	};
+
+//	for (int p = 0; p < 8; p++) {
+//		Serial << p << endl;
+//		for (int c = 0; c < 5; c++) {
+//			Serial << polyXPoints[p][c] << "," << polyYPoints[p][c] << endl;
+//		}
+//		Serial << endl;
+//	}
+
+	static float centerXPoints[8] = {centerX-hs, centerX+hs, centerX+r, centerX+r, centerX+hs, centerX-hs, centerX-r, centerX-r};
+	static float centerYPoints[8] = {centerY+r, centerY+r, centerY+hs, centerY-hs, centerY-r, centerY-r, centerY-hs, centerY+hs};
+
+	//add an extra point in the base of each 4-vertex poly, to up to 5 points for sake of consistency of arrays
+Serial << aX << ":" << aY << ":" << pnpoly(8, centerXPoints, centerYPoints, aX, aY) << endl;
+
+//skip interrupts, so don't twiddle w/ values as we're working w/ them
 	noInterrupts();
-	int r = 255;
-	int s = 2*r*.4142;
-	int centerX = 511;
-	int centerY = 511;
-	float polyXPoints[8] = {centerX - s/2, centerX + s/2, centerX + r, centerX + r, centerX + s/2, centerX - s/2, centerX - r, centerX - r};
-	float polyYPoints[8] = {centerY + r, centerY + r, centerY + s/2, centerY - s/2, centerY - r, centerY - r, centerY - s/2, centerY + s/2};
 
-Serial << aX << ":" << aY << ":" << pnpoly(8, polyXPoints, polyYPoints, aX, aY) << endl;
-	//if this is an input that started from the neutral position, react immediately
-	// if this is an autorepeat (ie, stick hasn't been released back to neutral since last pos check), then delay the autorepeat to avoid overcontrol
-	if (
-			((aX < loThresh || aX > hiThresh) && (xReleased || (millis() - lastMillis > joystickAutorepeatDelayMillis)))
-			||
-			((aY < loThresh || aY > hiThresh) && (yReleased || (millis() - lastMillis > joystickAutorepeatDelayMillis)))
-		) {
-		lastMillis = millis();
-
-		if (aX > hiThresh) {
-			posX = posX + 1;
-			if (posX > posXMax) {
-			  posX = posXMax;
-			}
-		} else if (aX < loThresh) {
-			posX = posX - 1;
-			if (posX < posXMin) {
-			  posX = posXMin;
-			}
+	if (pnpoly(8, centerXPoints, centerYPoints, aX, aY) == 0) {
+		if ((pnpoly(5, polyXPoints[0], polyYPoints[0], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
+			posY++;
+			q=0;
 		}
-		if (aY > hiThresh) {
-			posY = posY + 1;
-			if (posY > posYMax) {
-			  posY = posYMax;
-			}
-		} else if (aY < loThresh) {
-			posY = posY - 1;
-			if (posY < posYMin) {
-			  posY = posYMin;
-			}
+		else if ((pnpoly(5, polyXPoints[1], polyYPoints[1], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
+			posX++;
+			posY++;
+			q=1;
 		}
+		else if ((pnpoly(5, polyXPoints[2], polyYPoints[2], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
+			posX++;
+			q=2;
+		}
+		else if ((pnpoly(5, polyXPoints[3], polyYPoints[3], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
+			posX++;
+			posY--;
+			q=3;
+		}
+		else if ((pnpoly(5, polyXPoints[4], polyYPoints[4], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
+			posY--;
+			q=4;
+		}
+		else if ((pnpoly(5, polyXPoints[5], polyYPoints[5], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
+			posX--;
+			posY--;
+			q=5;
+		}
+		else if ((pnpoly(5, polyXPoints[6], polyYPoints[6], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
+			posX--;
+			q=6;
+		}
+		else if ((pnpoly(5, polyXPoints[7], polyYPoints[7], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
+			posX--;
+			posY++;
+			q=7;
+		} else {
+			q=-1;
+		}
+		if (posX > posXMax) {
+			posX = posXMax;
+		} else if (posX < posXMin) {
+			posX = posXMin;
+		}
+		if (posY > posYMax) {
+			posY = posYMax;
+		} else if (posY < posYMin) {
+			posY = posYMin;
+		}
+		if (millis() - lastMillis > joystickAutorepeatDelayMillis) {
+			lastMillis = millis();
+		}
+		released = false;
+	} else {
+		q = 0;
+		released = true;
 	}
+
+Serial << q << endl;
 
 	//back to accepting interrupts
 	interrupts();
