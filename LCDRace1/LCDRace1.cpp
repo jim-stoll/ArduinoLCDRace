@@ -33,9 +33,6 @@ const int lapCol = 0;
 const int lapRow = 3;
 const int scoreCol = 0;
 const int scoreRow = 0;
-const byte oncomingEmpty = 0;
-const byte oncomingCar = 1;
-const byte oncomingFuel = 2;
 const unsigned long switchDebounceMillis = 200;
 const unsigned long splashDelayMillis = 1000;
 unsigned long lastOncomingMillis = 0;
@@ -70,31 +67,31 @@ unsigned long lapStartMillis;
 int lapBonusTimeBase = 8000;
 int lapBonusTimeInc = 2000;
 bool buttonPressed = false;
+const byte minPlayLevel = 1;
+const byte maxPlayLevel = 4;
+const byte laneSparsityThreshold = 2;
+const byte fuelMarkerPctChance = 5;
 
-//volatile bool xReleased;
-//volatile bool yReleased;
+float jsCenterX = 512;
+float jsCenterY = 512;
+float jsMoveBnd = 512;
+float jsMoveThresh = 256;
+int jsMoveLoThresh = jsCenterX - jsMoveThresh;
+int jsMoveHiThresh = jsCenterX + jsMoveThresh;
+
+byte playLevel = 1;
 
 //these are potential configurable items, such as might be set/changed based on difficulty level, and/or via menu prefs (such as joystick threshold pct)
 int lapClearPos = 3;
 int speedChangeInc = 10; //could  be adjusted for harder levels - controls speed diff as move up track, as well as in accumulated laps
 const unsigned long oncomingUpdateMillisBase = 1000; //could also be shortened for higher levels
-int joystickThreshPct = 25; //could be pref for responsiveness of joystick
 unsigned long joystickReadMicros = 100000;
 int lapScoreBonus = 10;
-const int joystickXAutorepeatDelayMillis = 200; //could be pref for responsiveness of car
-const int joystickYAutorepeatDelayMillis = 200;
-byte playLevel = 1;
-byte minPlayLevel = 1;
-byte maxPlayLevel = 2;
-byte laneSparsityThreshold = 2;
-const byte fuelMarkerPctChance = 5;
 int fuelBonus = 10;
 // end config params
 
 unsigned long oncomingUpdateMillis = oncomingUpdateMillisBase;
 
-int loThresh = 511 - 512*(joystickThreshPct/100.0);//1023*joystickThreshPct/100.0;
-int hiThresh = 511 + 512*(joystickThreshPct/100.0);//1023*(1.0-joystickThreshPct/100.0);
 
 byte finishLineCustomChar[8] = {
 	0b00001,
@@ -229,27 +226,26 @@ void showSplash() {
 void selectLevel() {
 	lcd.clear();
 	lcd.setCursor(0,0);
-	lcd.print("Level: ");
+	lcd.print("Pick Level: ");
 
-	static unsigned long lastXMillis = 0;
-	static unsigned long lastYMillis = 0;
+	static unsigned long lastMillis = 0;
+	unsigned long joystickAutorepeatDelayMillis = 500;
 
 	//call getButtonPressed to clear flag, if its set
 	getButtonPressed();
 
 	while (!buttonPressed) {
-		lcd.setCursor(7,0);
+		lcd.setCursor(12,0);
 		lcd.print(playLevel);
-		if (((aY < loThresh || aY > hiThresh) && ((millis() - lastYMillis > joystickYAutorepeatDelayMillis))) || (aX < loThresh || aX > hiThresh) && ((millis() - lastXMillis > joystickXAutorepeatDelayMillis))) {
-			lastXMillis = millis();
-			lastYMillis = millis();
+		if ((aY < jsMoveLoThresh || aY > jsMoveHiThresh || aX < jsMoveLoThresh || aX > jsMoveHiThresh) && (millis() - lastMillis > joystickAutorepeatDelayMillis)) {
+			lastMillis = millis();
 
-			if (aY > hiThresh || aX > hiThresh) {
+			if (aY > jsMoveHiThresh || aX > jsMoveHiThresh) {
 				playLevel = playLevel + 1;
 				if (playLevel > maxPlayLevel) {
 				  playLevel = maxPlayLevel;
 				}
-			} else if (aY < loThresh || aX < loThresh) {
+			} else if (aY < jsMoveLoThresh || aX < jsMoveLoThresh) {
 				playLevel = playLevel - 1;
 				if (playLevel < minPlayLevel) {
 				  playLevel = minPlayLevel;
@@ -261,10 +257,10 @@ void selectLevel() {
 
 	for (int x = 0; x < 3; x++) {
 		lcd.setCursor(0,0);
-		lcd.print("        ");
+		lcd.print("             ");
 		delay(125);
 		lcd.setCursor(0,0);
-		lcd.print("Level: ");
+		lcd.print("Pick Level: ");
 		lcd.print(playLevel);
 		delay(125);
 	}
@@ -305,23 +301,12 @@ void buttonISR() {
 		buttonPressed = true;
 	}
 }
+
 //take joystick readings on a regular basis (vis Timer1 interrupt), to ensure getting timely input
 void readJoystick() {
 	//read from joystick
 	aX = analogRead(aXPin);
 	aY = 1023 - analogRead(aYPin);
-
-//	//track whether joystick has been released back to neutral, for autorepeat purposes
-//	if (aX > loThresh && aX < hiThresh) {
-//		xReleased = true;
-//	} else {
-//		xReleased = false;
-//	}
-//	if (aY > loThresh && aY < hiThresh) {
-//		yReleased = true;
-//	} else {
-//		yReleased = false;
-//	}
 }
 
 void enableButtonInterrupt(bool enable) {
@@ -380,95 +365,74 @@ int pnpoly(int nvert, float *vertx, float *verty, float testx, float testy) {
 
 void adjustPos() {
 	static unsigned long lastMillis = 0;
-unsigned long joystickAutorepeatDelayMillis = 200;
-int q = 0;
-	static float rBnd = 512;
-	static float r = 256;
-	static float hs = r*.4142;
-	static float centerX = 512;
-	static float centerY = 512;
+	unsigned long joystickAutorepeatDelayMillis = 200;
+	static float hs = jsMoveThresh*.4142;
 	static bool released = true;
 
 	//NOTE: adding extra vertex to base of each 4-vertext polygon, to standardize array size
 	static float polyXPoints[8][5] = {
-	/*0*/	{centerX-hs, centerX+hs, centerX+hs, centerX, centerX-hs},
-	/*1*/	{centerX+hs, centerX+rBnd, centerX+rBnd, centerX+r, centerX+hs},
-	/*2*/	{centerX+r, centerX+rBnd, centerX+rBnd, centerX+r, centerX+r},
-	/*3*/	{centerX+r, centerX+rBnd, centerX+rBnd, centerX+hs, centerX+hs},
-	/*4*/	{centerX-hs, centerX, centerX+hs, centerX+hs, centerX-hs},
-	/*5*/	{centerX-rBnd, centerX-r, centerX-hs, centerX-hs, centerX-rBnd},
-	/*6*/	{centerX-rBnd, centerX-r, centerX-r, centerX-r, centerX-rBnd},
-	/*7*/	{centerX-rBnd, centerX-hs, centerX-hs, centerX-r, centerX-rBnd}
+	/*0*/	{jsCenterX-hs, jsCenterX+hs, jsCenterX+hs, jsCenterX, jsCenterX-hs},
+	/*1*/	{jsCenterX+hs, jsCenterX+jsMoveBnd, jsCenterX+jsMoveBnd, jsCenterX+jsMoveThresh, jsCenterX+hs},
+	/*2*/	{jsCenterX+jsMoveThresh, jsCenterX+jsMoveBnd, jsCenterX+jsMoveBnd, jsCenterX+jsMoveThresh, jsCenterX+jsMoveThresh},
+	/*3*/	{jsCenterX+jsMoveThresh, jsCenterX+jsMoveBnd, jsCenterX+jsMoveBnd, jsCenterX+hs, jsCenterX+hs},
+	/*4*/	{jsCenterX-hs, jsCenterX, jsCenterX+hs, jsCenterX+hs, jsCenterX-hs},
+	/*5*/	{jsCenterX-jsMoveBnd, jsCenterX-jsMoveThresh, jsCenterX-hs, jsCenterX-hs, jsCenterX-jsMoveBnd},
+	/*6*/	{jsCenterX-jsMoveBnd, jsCenterX-jsMoveThresh, jsCenterX-jsMoveThresh, jsCenterX-jsMoveThresh, jsCenterX-jsMoveBnd},
+	/*7*/	{jsCenterX-jsMoveBnd, jsCenterX-hs, jsCenterX-hs, jsCenterX-jsMoveThresh, jsCenterX-jsMoveBnd}
 	};
 
 	static float polyYPoints[8][5] = {
-	/*0*/	{centerY+rBnd, centerY+rBnd, centerY+r, centerY+r, centerY+r},
-	/*1*/	{centerY+rBnd, centerY+rBnd, centerY+hs, centerY+hs, centerY+r},
-	/*2*/	{centerY+hs, centerY+hs, centerY-hs, centerY-hs, centerY},
-	/*3*/	{centerY-hs, centerY-hs, centerY-rBnd, centerY-rBnd, centerY-r},
-	/*4*/	{centerY-r, centerY-r, centerY-r, centerY-rBnd, centerY-rBnd},
-	/*5*/	{centerY-hs, centerY-hs, centerY-r, centerY-rBnd, centerY-rBnd},
-	/*6*/	{centerY+hs, centerY+hs, centerY, centerY-hs, centerY-hs},
-	/*7*/	{centerY+rBnd, centerY+rBnd, centerY+r, centerY+hs, centerY+hs}
+	/*0*/	{jsCenterY+jsMoveBnd, jsCenterY+jsMoveBnd, jsCenterY+jsMoveThresh, jsCenterY+jsMoveThresh, jsCenterY+jsMoveThresh},
+	/*1*/	{jsCenterY+jsMoveBnd, jsCenterY+jsMoveBnd, jsCenterY+hs, jsCenterY+hs, jsCenterY+jsMoveThresh},
+	/*2*/	{jsCenterY+hs, jsCenterY+hs, jsCenterY-hs, jsCenterY-hs, jsCenterY},
+	/*3*/	{jsCenterY-hs, jsCenterY-hs, jsCenterY-jsMoveBnd, jsCenterY-jsMoveBnd, jsCenterY-jsMoveThresh},
+	/*4*/	{jsCenterY-jsMoveThresh, jsCenterY-jsMoveThresh, jsCenterY-jsMoveThresh, jsCenterY-jsMoveBnd, jsCenterY-jsMoveBnd},
+	/*5*/	{jsCenterY-hs, jsCenterY-hs, jsCenterY-jsMoveThresh, jsCenterY-jsMoveBnd, jsCenterY-jsMoveBnd},
+	/*6*/	{jsCenterY+hs, jsCenterY+hs, jsCenterY, jsCenterY-hs, jsCenterY-hs},
+	/*7*/	{jsCenterY+jsMoveBnd, jsCenterY+jsMoveBnd, jsCenterY+jsMoveThresh, jsCenterY+hs, jsCenterY+hs}
 
 	};
 
-//	for (int p = 0; p < 8; p++) {
-//		Serial << p << endl;
-//		for (int c = 0; c < 5; c++) {
-//			Serial << polyXPoints[p][c] << "," << polyYPoints[p][c] << endl;
-//		}
-//		Serial << endl;
-//	}
+	static float centerXPoints[8] = {jsCenterX-hs, jsCenterX+hs, jsCenterX+jsMoveThresh, jsCenterX+jsMoveThresh, jsCenterX+hs, jsCenterX-hs, jsCenterX-jsMoveThresh, jsCenterX-jsMoveThresh};
+	static float centerYPoints[8] = {jsCenterY+jsMoveThresh, jsCenterY+jsMoveThresh, jsCenterY+hs, jsCenterY-hs, jsCenterY-jsMoveThresh, jsCenterY-jsMoveThresh, jsCenterY-hs, jsCenterY+hs};
 
-	static float centerXPoints[8] = {centerX-hs, centerX+hs, centerX+r, centerX+r, centerX+hs, centerX-hs, centerX-r, centerX-r};
-	static float centerYPoints[8] = {centerY+r, centerY+r, centerY+hs, centerY-hs, centerY-r, centerY-r, centerY-hs, centerY+hs};
+	if (playLevel == 1) {
+		joystickAutorepeatDelayMillis = 300;
+	}
 
-	//add an extra point in the base of each 4-vertex poly, to up to 5 points for sake of consistency of arrays
-Serial << aX << ":" << aY << ":" << pnpoly(8, centerXPoints, centerYPoints, aX, aY) << endl;
-
-//skip interrupts, so don't twiddle w/ values as we're working w/ them
+	//skip interrupts, so don't twiddle w/ values as we're working w/ them
 	noInterrupts();
 
 	if (pnpoly(8, centerXPoints, centerYPoints, aX, aY) == 0) {
 		if ((pnpoly(5, polyXPoints[0], polyYPoints[0], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
 			posY++;
-			q=0;
 		}
 		else if ((pnpoly(5, polyXPoints[1], polyYPoints[1], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
 			posX++;
 			posY++;
-			q=1;
 		}
 		else if ((pnpoly(5, polyXPoints[2], polyYPoints[2], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
 			posX++;
-			q=2;
 		}
 		else if ((pnpoly(5, polyXPoints[3], polyYPoints[3], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
 			posX++;
 			posY--;
-			q=3;
 		}
 		else if ((pnpoly(5, polyXPoints[4], polyYPoints[4], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
 			posY--;
-			q=4;
 		}
 		else if ((pnpoly(5, polyXPoints[5], polyYPoints[5], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
 			posX--;
 			posY--;
-			q=5;
 		}
 		else if ((pnpoly(5, polyXPoints[6], polyYPoints[6], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
 			posX--;
-			q=6;
 		}
 		else if ((pnpoly(5, polyXPoints[7], polyYPoints[7], aX, aY) == 1) && (released || (millis() - lastMillis > joystickAutorepeatDelayMillis))) {
 			posX--;
 			posY++;
-			q=7;
-		} else {
-			q=-1;
 		}
+
 		if (posX > posXMax) {
 			posX = posXMax;
 		} else if (posX < posXMin) {
@@ -484,16 +448,11 @@ Serial << aX << ":" << aY << ":" << pnpoly(8, centerXPoints, centerYPoints, aX, 
 		}
 		released = false;
 	} else {
-		q = 0;
 		released = true;
 	}
 
-Serial << q << endl;
-
 	//back to accepting interrupts
 	interrupts();
-
-//  Serial << "aX" << ": " << aX << " aY" << ": " << aY << " posX: " << posX << " posY: " << posY << endl;
 
 }
 
@@ -524,7 +483,6 @@ void getDigits(int num, byte *digits) {
 	digits[2] = num/100;
 	digits[1] = (num - 100*digits[2])/10;
 	digits[0] = num - 100*digits[2] - 10*digits[1];
-//Serial << "digits: " << digits[2] << digits[1] << digits[0] << endl;
 }
 
 void printScore() {
@@ -574,17 +532,6 @@ void printLanes() {
 			}
 		}
     }
-  }
-
-}
-
-void debugLanes() {
-  for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
-    Serial << "L" << laneNum << ": ";
-    for (int posNum = minLanePos; posNum < numPos; posNum++) {
-    	Serial << lanes[laneNum][posNum].type;
-    }
-    Serial << endl;
   }
 
 }
@@ -690,15 +637,17 @@ void popLanes(byte sparseThreshold) {
 		newLane = random(numLanes);
 	}
 
-//	lanes[newLane][maxLanePos] = NEW_ONCOMING_CAR;
+	if (playLevel > 1 || random(10) > 3) {
+		lanes[newLane][maxLanePos] = NEW_ONCOMING_CAR;
+	}
 
-	if (playLevel > 1 && random(10) > 7-playLevel) {
+	if (playLevel > 2 && random(10) > 8-playLevel) {
 			int x = random(numLanes);
 			while (x == newLane) {
 				x = random(numLanes);
 			}
 			newLane = x;
-//			lanes[newLane][maxLanePos] = NEW_ONCOMING_CAR;
+			lanes[newLane][maxLanePos] = NEW_ONCOMING_CAR;
 	}
 
 	if (random(100) <= fuelMarkerPctChance) {
@@ -766,7 +715,7 @@ int checkForOncoming() {
     } else if (lanes[posX][posY].type == FUEL) {
     	//if got fuel, make it disappear
     	lanes[posX][posY] = NEW_EMPTY;
-    	score = score + lapNum * scoreScale * fuelBonus;
+    	score = score + lapNum * scoreScale * fuelBonus + playLevel;
 
 //    	showBonus("FUEL", lapNum * scoreScale * fuelBonus);
 
@@ -814,7 +763,6 @@ void startNewLap() {
 	}
 
 	unsigned long currMillis = millis();
-//	Serial << "laptime: " << currMillis - lapStartMillis << endl;
 
 	unsigned long lapBonusTargetMillis = lapBonusTimeBase + lapNum * lapBonusTimeInc;
 	int lapBonus = 0;
@@ -822,7 +770,6 @@ void startNewLap() {
 	if (lapStartMillis > 0 && (currMillis - lapStartMillis) < lapBonusTargetMillis) {
 		//award bounus point for each .1 sec faster than target time
 		lapBonus = (lapBonusTargetMillis - (currMillis - lapStartMillis))/100;
-//		Serial << "time bonus: " <<  lapBonus << endl;
 		score = score + lapBonus;
 
 		showBonus("SPEED", lapBonus);
@@ -850,12 +797,22 @@ void startNewLap() {
 	printLanes();
 	posY = minLanePos;
 	printPlayerMarker();
+	aX = jsCenterX;
+	aY = jsCenterY;
 	delay(250);
 	lapStartMillis = millis();
 }
 
 void adjustOncomingSpeed() {
     oncomingUpdateMillis = oncomingUpdateMillisBase - (speedChangeInc * posY + speedChangeInc*(numPos * (lapNum-1)));
+
+    if (playLevel == 1 && lapNum > 1) {
+    	oncomingUpdateMillis = 1.5*oncomingUpdateMillis;
+    } else if (playLevel == 2 || playLevel == 3) {
+    	oncomingUpdateMillis = oncomingUpdateMillis - 20;
+    } else {
+    	oncomingUpdateMillis = oncomingUpdateMillis - playLevel * 10;
+    }
 }
 
 void adjustScore() {
@@ -863,7 +820,7 @@ void adjustScore() {
     for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
        if (lanes[laneNum][posY - 1].type == ONCOMING_CAR && lanes[laneNum][posY - 1].passedFlag == false) {
     	   lanes[laneNum][posY - 1].passedFlag = true;
-    	   score = score + lapNum * scoreScale;
+    	   score = score + lapNum * scoreScale + (playLevel - 1);
        }
     }
   }
@@ -874,7 +831,6 @@ void loop() {
 	if (reset) {
 		initGame();
 		delay(splashDelayMillis);
-//		selectLevel();
 	} else {
 
 		if (gameStatus == INPLAY) {
