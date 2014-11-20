@@ -563,6 +563,16 @@ void printLanes() {
 
 }
 
+bool checkAdjacents(int row) {
+	for (int p = 0; p < numLanes - 1; p++) {
+		if (lanes[p][row].type == lanePositionType::ONCOMING_CAR && lanes[p+1][row].type == lanePositionType::ONCOMING_CAR) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void popLanes(byte sparseThreshold) {
 	int newLane = 0;
 	int laneSparsity = 0;
@@ -670,11 +680,13 @@ void popLanes(byte sparseThreshold) {
 
 	if (playLevel > 2 && random(10) > 8-playLevel) {
 			int x = random(numLanes);
-			while (x == newLane) {
+			while (x == newLane || (checkAdjacents(maxLanePos-1) && (x == newLane-1 || x == newLane+1))) {
+
 				x = random(numLanes);
 			}
 			newLane = x;
 			lanes[newLane][maxLanePos] = NEW_ONCOMING_CAR;
+
 	}
 
 	if (random(100) <= fuelMarkerPctChance) {
