@@ -32,6 +32,11 @@
 			<locationURI>ArduinoPivateLibPath/LiquidCrystal</locationURI>
 		</link>
 		<link>
+			<name>Libraries/MemoryFree</name>
+			<type>2</type>
+			<locationURI>ArduinoPivateLibPath/MemoryFree</locationURI>
+		</link>
+		<link>
 			<name>Libraries/Streaming</name>
 			<type>2</type>
 			<locationURI>ArduinoPivateLibPath/Streaming</locationURI>
