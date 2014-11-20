@@ -35,9 +35,11 @@ const int scoreCol = 0;
 const int scoreRow = 0;
 const unsigned long switchDebounceMillis = 200;
 const unsigned long splashDelayMillis = 1000;
-unsigned long lastOncomingMillis = 0;
-unsigned long lastPosChangeMillis = 0;
-unsigned long posChangeUpdateMillis = 100;
+const unsigned long oncomingUpdateMillisBase = 1000; //could also be shortened for higher levels
+const unsigned long posChangeUpdateMillis = 100;
+const int lapBonusTimeBase = 8000;
+const int lapBonusTimeInc = 2000;
+const int numLaps = 4;
 
 typedef struct lanePositionStruct {
 	enum oncomingEnum {EMPTY, ONCOMING_CAR, FUEL} type;
@@ -55,38 +57,35 @@ volatile int aX, aY;
 lanePositionType lanes[numLanes][numPos];
 int score = 0;
 bool reset = true;
-int numLaps = 4;
 int lapNum;
 unsigned long lapStartMillis;
-int lapBonusTimeBase = 8000;
-int lapBonusTimeInc = 2000;
 bool buttonPressed = false;
-byte fuelMarkerPctChance = 5;
 
 const byte minPlayLevel = 1;
 const byte maxPlayLevel = 4;
 const byte laneSparsityThreshold = 2;
 
-float jsCenterX = 512;
-float jsCenterY = 512;
-float jsMoveBnd = 512;
-float jsMoveThresh = 256;
-int jsMoveLoThresh = jsCenterX - jsMoveThresh;
-int jsMoveHiThresh = jsCenterX + jsMoveThresh;
+const float jsCenterX = 512;
+const float jsCenterY = 512;
+const float jsMoveBnd = 512;
+const float jsMoveThresh = 320;//256;
+const int jsMoveLoThresh = jsCenterX - jsMoveThresh;
+const int jsMoveHiThresh = jsCenterX + jsMoveThresh;
 
 byte playLevel = 1;
 
 //these are potential configurable items, such as might be set/changed based on difficulty level, and/or via menu prefs (such as joystick threshold pct)
-int lapClearPos = 3;
+int lapClearPos = 3; //num rows to clear from bottom when starting new lap
 int speedChangeInc = 10; //could  be adjusted for harder levels - controls speed diff as move up track, as well as in accumulated laps
-const unsigned long oncomingUpdateMillisBase = 1000; //could also be shortened for higher levels
 unsigned long joystickReadMicros = 100000;
 int lapScoreBonus = 10;
 int fuelBonus = 10;
+byte fuelMarkerPctChance = 5; //modified for level 1, so not const
 // end config params
 
 unsigned long oncomingUpdateMillis = oncomingUpdateMillisBase;
 
+// these custom chars can't be consts, as the lcd.createCharacter method rejects them, if they're consts
 byte finishLineCustomChar[8] = {
 	0b00001,
 	0b00001,
@@ -200,16 +199,16 @@ byte fuelCustomChar[8] = {
 	0b00000
 };
 
-uint8_t finishLineMarker = 0;
-uint8_t finishLineOncomingMarker = 1;
-uint8_t playerMarker = 2;
-uint8_t oncomingMarker = 3;
-uint8_t wreckMarker = 4;
-uint8_t lap3Marker = 5;
-uint8_t lap4Marker = 6;
-uint8_t fuelMarker = 7;
+const uint8_t finishLineMarker = 0;
+const uint8_t finishLineOncomingMarker = 1;
+const uint8_t playerMarker = 2;
+const uint8_t oncomingMarker = 3;
+const uint8_t wreckMarker = 4;
+const uint8_t lap3Marker = 5;
+const uint8_t lap4Marker = 6;
+const uint8_t fuelMarker = 7;
 //NOTE - using this array based on gameState - the 'win' marker and the 'inplay' marker are the same marker, so using it in 2 places in this array
-uint8_t playerMarkers[] = {wreckMarker, playerMarker, playerMarker};
+const uint8_t playerMarkers[] = {wreckMarker, playerMarker, playerMarker};
 
 
 typedef struct gameStatusStruct {
@@ -855,6 +854,9 @@ void adjustScore() {
 }
 
 void loop() {
+	static unsigned long lastOncomingMillis = 0;
+	static unsigned long lastPosChangeMillis = 0;
+
 
 	if (reset) {
 		initGame();
