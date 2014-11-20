@@ -12,6 +12,7 @@
 #include "LiquidCrystal_I2C.h"
 #include "Wire.h"
 #include "TimerOne.h"
+#include "EEPROM.h"
 //#include "MemoryFree.h"
 
 

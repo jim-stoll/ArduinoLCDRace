@@ -1,5 +1,6 @@
 #include "LCDRace1.h"
 
+//#define CLR_HIGH_SCORES
 //**TODO: don't repaint player marker, if hasn't moved from last position?
 
 #define I2C_ADDR      0x27 // I2C address of PCF8574A
@@ -222,12 +223,51 @@ const gameStatusType winStatus = {gameStatusType::WIN, "WIN!!", playerMarker};
 const gameStatusType inplayStatus = {gameStatusType::INPLAY, "       ", playerMarker};
 gameStatusType gameStatus;
 
+const int highScoreEEPROMBaseAddr = 0;
+int highScores[maxPlayLevel];
+
+void clearHighScores() {
+	int highScore = 0;
+	for (int lvl = 1; lvl <= maxPlayLevel; lvl++) {
+		EEPROM.write(highScoreEEPROMBaseAddr + 2*lvl - 2, 0);
+		EEPROM.write(highScoreEEPROMBaseAddr + 2*lvl - 1, 0);
+		highScores[lvl-1] = 0;
+	}
+}
+
+void saveHighScore() {
+	byte msb = score/255;
+	byte lsb = score - 255*msb;
+	EEPROM.write(highScoreEEPROMBaseAddr + 2*playLevel - 2, msb);
+	EEPROM.write(highScoreEEPROMBaseAddr + 2*playLevel - 1, lsb);
+}
+
+void retrieveHighScores() {
+	int highScore = 0;
+	for (int lvl = 1; lvl <= maxPlayLevel; lvl++) {
+		highScore = 0;
+		highScore = 255*EEPROM.read(2*lvl-2);
+		highScore += EEPROM.read(2*lvl-1);
+		highScores[lvl-1] = highScore;
+	}
+}
+
 void initLanes() {
   for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
     for (int posNum = minLanePos; posNum < numPos; posNum ++) {
       lanes[laneNum][posNum] = NEW_EMPTY;
     }
   }
+}
+
+bool checkHighScore() {
+	if (score > highScores[playLevel-1]) {
+		highScores[playLevel-1] = score;
+		saveHighScore();
+		return true;
+	}
+
+	return false;
 }
 
 void showSplash() {
@@ -249,6 +289,9 @@ void selectLevel() {
 	lcd.clear();
 	lcd.setCursor(0,0);
 	lcd.print("Pick Level: ");
+	lcd.setCursor(0, 2);
+	lcd.print("High Score: ");
+	lcd.print(highScores[playLevel-1]);
 
 	static unsigned long lastMillis = 0;
 	unsigned long joystickAutorepeatDelayMillis = 500;
@@ -274,6 +317,10 @@ void selectLevel() {
 				}
 			}
 		}
+
+		lcd.setCursor(12,2);
+		lcd.print(highScores[playLevel-1]);
+		lcd.print("   ");
 
 	}
 
@@ -366,6 +413,12 @@ void setup() {
   lcd.createChar(lap3Marker, lap3CustomChar);
   lcd.createChar(lap4Marker, lap4CustomChar);
   lcd.createChar(fuelMarker, fuelCustomChar);
+
+#ifdef CLR_HIGH_SCORES
+  clearHighScores();
+#endif
+
+  retrieveHighScores();
 
   showSplash();
 }
@@ -713,6 +766,12 @@ void printGameStatus() {
 		lcd.setCursor(resultCol, resultRow);
 		lcd.print(gameStatus.statusString);//gameStatusStrings[gameStatus]);
 
+		bool isHighScore = checkHighScore();
+		if (isHighScore) {
+			lcd.setCursor(resultCol, resultRow + 2);
+			lcd.print("NEW HIGH SCORE!!!");
+		}
+
 		//in case the status covers the final player position, re-print final position and appropriate marker
 		printPlayerMarker();
 
@@ -727,6 +786,11 @@ void printGameStatus() {
 			//clear the status and player marker
 			lcd.setCursor(resultCol, resultRow);
 			lcd.print(gameStatus.statusString);//gameStatusStrings[INPLAY]);
+			lcd.setCursor(resultCol, resultRow + 2);
+			if (isHighScore) {
+				lcd.setCursor(resultCol, resultRow + 2);
+				lcd.print("NEW HIGH SCORE!!!");
+			}
 			lcd.setCursor((19-maxLanePos) + maxLanePos - posY, maxLaneNum - posX);
 			clearPlayerMarker();
 
@@ -735,6 +799,10 @@ void printGameStatus() {
 			//print status and last player marker
 			lcd.setCursor(resultCol, resultRow);
 			lcd.print(gameStatus.statusString);//gameStatusStrings[gameStatus]);
+			if (isHighScore) {
+				lcd.setCursor(resultCol, resultRow + 2);
+				lcd.print("NEW HIGH SCORE!!!");
+			}
 			lcd.setCursor((19-maxLanePos) + maxLanePos - posY, maxLaneNum - posX);
 			printPlayerMarker();
 
@@ -747,6 +815,8 @@ int checkForOncoming() {
   for (int laneNum = minLaneNum; laneNum < numLanes; laneNum++) {
     if (lanes[posX][posY].type == lanePositionType::ONCOMING_CAR) {
     	gameStatus = wreckStatus;
+		adjustScore();
+		printScore();
 
 		printGameStatus();
 

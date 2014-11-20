@@ -27,6 +27,11 @@
 	</natures>
 	<linkedResources>
 		<link>
+			<name>Libraries/EEPROM</name>
+			<type>2</type>
+			<locationURI>ArduinoHardwareLibPath/EEPROM</locationURI>
+		</link>
+		<link>
 			<name>Libraries/LiquidCrystal</name>
 			<type>2</type>
 			<locationURI>ArduinoPivateLibPath/LiquidCrystal</locationURI>
