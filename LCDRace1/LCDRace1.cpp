@@ -1,6 +1,7 @@
 #include "LCDRace1.h"
 
 //#define CLR_HIGH_SCORES
+
 //**TODO: don't repaint player marker, if hasn't moved from last position?
 
 #define I2C_ADDR      0x27 // I2C address of PCF8574A
@@ -224,31 +225,104 @@ const gameStatusType inplayStatus = {gameStatusType::INPLAY, "       ", playerMa
 gameStatusType gameStatus;
 
 const int highScoreEEPROMBaseAddr = 0;
-int highScores[maxPlayLevel];
+
+typedef struct highScoreStruct {
+	int score;
+	char initials[2];
+} highScoreType;
+
+byte highScoreByteSize = 4;
+highScoreType highScores[maxPlayLevel];
+char playerInitials[2] = {' ',' '};
+
 
 void clearHighScores() {
 	int highScore = 0;
 	for (int lvl = 1; lvl <= maxPlayLevel; lvl++) {
-		EEPROM.write(highScoreEEPROMBaseAddr + 2*lvl - 2, 0);
-		EEPROM.write(highScoreEEPROMBaseAddr + 2*lvl - 1, 0);
-		highScores[lvl-1] = 0;
+		EEPROM.write(highScoreEEPROMBaseAddr + highScoreByteSize*lvl - 4, 0);
+		EEPROM.write(highScoreEEPROMBaseAddr + highScoreByteSize*lvl - 3, 0);
+		EEPROM.write(highScoreEEPROMBaseAddr + highScoreByteSize*lvl - 2, 32);
+		EEPROM.write(highScoreEEPROMBaseAddr + highScoreByteSize*lvl - 1, 32);
+		highScores[lvl-1].score = 0;
+		highScores[lvl-1].initials[0] = ' ';
+		highScores[lvl-1].initials[1] = ' ';
 	}
+}
+
+void inputInitials() {
+	//call getButtonPressed to clear flag, if its set
+	getButtonPressed();
+	char initials[2] = {'A', 'A'};
+	int initialNum = 1;
+	char *initialsPrompt = "Enter Initials: ";
+	unsigned long lastMillis = 0;
+	int joystickAutorepeatDelayMillis = 300;
+
+	lcd.setCursor(0, 3);
+	lcd.print(initialsPrompt);
+	while (!buttonPressed) {
+//		lcd.setCursor(12,0);
+//		lcd.print(playLevel);
+		lcd.setCursor(strlen(initialsPrompt) + 0, 3);
+		lcd.print(initials[1]);
+		lcd.setCursor(strlen(initialsPrompt) + 1, 3);
+		lcd.print(initials[0]);
+
+		if ((aX < jsMoveLoThresh || aX > jsMoveHiThresh) && (millis() - lastMillis > joystickAutorepeatDelayMillis)) {
+			lastMillis = millis();
+
+			if (aX > jsMoveHiThresh) {
+				initials[initialNum]++;
+				if (initials[initialNum] > 'Z') {
+					initials[initialNum] = 'Z';
+				}
+			} else if (aX < jsMoveLoThresh) {
+				initials[initialNum]--;
+				if (initials[initialNum] < 'A') {
+					initials[initialNum] = 'A';
+				}
+			}
+			lcd.setCursor(strlen(initialsPrompt) + 1 - initialNum, 3);
+			lcd.print(initials[initialNum]);
+		} else if (aY < jsMoveLoThresh) {
+			initialNum--;
+			if (initialNum < 0) {
+				initialNum = 0;
+			}
+			lcd.setCursor(strlen(initialsPrompt) + 1 - initialNum, 3);
+		} else if (aY > jsMoveHiThresh) {
+			initialNum++;
+			if (initialNum > 1) {
+				initialNum = 1;
+			}
+			lcd.setCursor(strlen(initialsPrompt) + 1 - initialNum, 3);
+		}
+	}
+	playerInitials[0] = initials[0];
+	playerInitials[1] = initials[1];
 }
 
 void saveHighScore() {
 	byte msb = score/255;
 	byte lsb = score - 255*msb;
-	EEPROM.write(highScoreEEPROMBaseAddr + 2*playLevel - 2, msb);
-	EEPROM.write(highScoreEEPROMBaseAddr + 2*playLevel - 1, lsb);
+	EEPROM.write(highScoreEEPROMBaseAddr + highScoreByteSize*playLevel - 4, msb);
+	EEPROM.write(highScoreEEPROMBaseAddr + highScoreByteSize*playLevel - 3, lsb);
+	EEPROM.write(highScoreEEPROMBaseAddr + highScoreByteSize*playLevel - 2, playerInitials[1]);
+	EEPROM.write(highScoreEEPROMBaseAddr + highScoreByteSize*playLevel - 1, playerInitials[0]);
+	highScores[playLevel-1].score = score;
+	highScores[playLevel-1].initials[1] = playerInitials[1];
+	highScores[playLevel-1].initials[0] = playerInitials[0];
 }
 
 void retrieveHighScores() {
 	int highScore = 0;
 	for (int lvl = 1; lvl <= maxPlayLevel; lvl++) {
 		highScore = 0;
-		highScore = 255*EEPROM.read(2*lvl-2);
-		highScore += EEPROM.read(2*lvl-1);
-		highScores[lvl-1] = highScore;
+		highScore = 255*EEPROM.read(highScoreEEPROMBaseAddr + highScoreByteSize*lvl - 4);
+		highScore += EEPROM.read(highScoreByteSize*lvl-3);
+		highScores[lvl-1].score = highScore;
+		highScores[lvl-1].initials[1] = EEPROM.read(highScoreByteSize*lvl - 2);
+		highScores[lvl-1].initials[0] = EEPROM.read(highScoreByteSize*lvl - 1);
 	}
 }
 
@@ -261,9 +335,9 @@ void initLanes() {
 }
 
 bool checkHighScore() {
-	if (score > highScores[playLevel-1]) {
-		highScores[playLevel-1] = score;
-		saveHighScore();
+	if (score > highScores[playLevel-1].score) {
+		highScores[playLevel-1].score = score;
+//		saveHighScore();
 		return true;
 	}
 
@@ -291,7 +365,10 @@ void selectLevel() {
 	lcd.print("Pick Level: ");
 	lcd.setCursor(0, 2);
 	lcd.print("High Score: ");
-	lcd.print(highScores[playLevel-1]);
+	lcd.print(highScores[playLevel-1].score);
+	lcd.print(" ");
+	lcd.print(highScores[playLevel-1].initials[1]);
+	lcd.print(highScores[playLevel-1].initials[0]);
 
 	static unsigned long lastMillis = 0;
 	unsigned long joystickAutorepeatDelayMillis = 500;
@@ -316,11 +393,14 @@ void selectLevel() {
 				  playLevel = minPlayLevel;
 				}
 			}
+			lcd.setCursor(12,2);
+			lcd.print(highScores[playLevel-1].score);
+			lcd.print("   ");
+			lcd.setCursor(16,2);
+			lcd.print(highScores[playLevel-1].initials[1]);
+			lcd.print(highScores[playLevel-1].initials[0]);
 		}
 
-		lcd.setCursor(12,2);
-		lcd.print(highScores[playLevel-1]);
-		lcd.print("   ");
 
 	}
 
@@ -392,6 +472,8 @@ void enableButtonInterrupt(bool enable) {
 }
 
 void setup() {
+  randomSeed(analogRead(2));
+  random(2147483647);
   Serial.begin(115200);
   //first analogRead on a pin can take longer than normal, so do a quick read on each now
   analogRead(aXPin);
@@ -781,7 +863,7 @@ void printGameStatus() {
 		for (int t = 0; t < 3; t++) {
 			//allow breaking out of status display
 			if (reset) {
-			  return;
+			  break;
 			}
 			//clear the status and player marker
 			lcd.setCursor(resultCol, resultRow);
@@ -807,6 +889,21 @@ void printGameStatus() {
 			printPlayerMarker();
 
 			delay(250);
+		}
+
+		//print status and last player marker
+		lcd.setCursor(resultCol, resultRow);
+		lcd.print(gameStatus.statusString);//gameStatusStrings[gameStatus]);
+		if (isHighScore) {
+			lcd.setCursor(resultCol, resultRow + 2);
+			lcd.print("NEW HIGH SCORE!!!");
+		}
+		lcd.setCursor((19-maxLanePos) + maxLanePos - posY, maxLaneNum - posX);
+		printPlayerMarker();
+
+		if (isHighScore) {
+			inputInitials();
+			saveHighScore();
 		}
 	}
 }
