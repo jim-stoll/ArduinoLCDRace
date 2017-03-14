@@ -6,6 +6,11 @@
 	</projects>
 	<buildSpec>
 		<buildCommand>
+			<name>it.baeyens.arduino.core.inoToCpp</name>
+			<arguments>
+			</arguments>
+		</buildCommand>
+		<buildCommand>
 			<name>org.eclipse.cdt.managedbuilder.core.genmakebuilder</name>
 			<triggers>clean,full,incremental,</triggers>
 			<arguments>
@@ -27,58 +32,39 @@
 	</natures>
 	<linkedResources>
 		<link>
-			<name>Libraries/EEPROM</name>
+			<name>core/core</name>
 			<type>2</type>
-			<locationURI>ArduinoHardwareLibPath/EEPROM</locationURI>
+			<location>/Applications/eclipseArduino.app/Contents/Eclipse/arduinoPlugin/packages/arduino/hardware/avr/1.6.10/cores/arduino</location>
 		</link>
 		<link>
-			<name>Libraries/LiquidCrystal</name>
+			<name>core/variant</name>
 			<type>2</type>
-			<locationURI>ArduinoPivateLibPath/LiquidCrystal</locationURI>
+			<location>/Applications/eclipseArduino.app/Contents/Eclipse/arduinoPlugin/packages/arduino/hardware/avr/1.6.10/variants/standard</location>
 		</link>
 		<link>
-			<name>Libraries/MemoryFree</name>
+			<name>libraries/EEPROM</name>
 			<type>2</type>
-			<locationURI>ArduinoPivateLibPath/MemoryFree</locationURI>
+			<location>/Applications/eclipseArduino.app/Contents/Eclipse/arduinoPlugin/packages/arduino/hardware/avr/1.6.10/libraries/EEPROM</location>
 		</link>
 		<link>
-			<name>Libraries/Streaming</name>
+			<name>libraries/NewliquidCrystal</name>
 			<type>2</type>
-			<locationURI>ArduinoPivateLibPath/Streaming</locationURI>
+			<location>/Users/jstoll/arduino/libraries/NewliquidCrystal</location>
 		</link>
 		<link>
-			<name>Libraries/TimerOne</name>
+			<name>libraries/Streaming</name>
 			<type>2</type>
-			<locationURI>ArduinoPivateLibPath/TimerOne</locationURI>
+			<location>/Users/jstoll/arduino/libraries/Streaming</location>
 		</link>
 		<link>
-			<name>Libraries/Wire</name>
+			<name>libraries/TimerOne</name>
 			<type>2</type>
-			<locationURI>ArduinoHardwareLibPath/Wire</locationURI>
+			<location>/Users/jstoll/arduino/libraries/TimerOne</location>
 		</link>
 		<link>
-			<name>arduino/core</name>
+			<name>libraries/Wire</name>
 			<type>2</type>
-			<locationURI>ArduinoPlatformPath/cores/arduino</locationURI>
-		</link>
-		<link>
-			<name>arduino/variant</name>
-			<type>2</type>
-			<locationURI>ArduinoPinPath/standard</locationURI>
+			<location>/Applications/eclipseArduino.app/Contents/Eclipse/arduinoPlugin/packages/arduino/hardware/avr/1.6.10/libraries/Wire</location>
 		</link>
 	</linkedResources>
-	<variableList>
-		<variable>
-			<name>ArduinoHardwareLibPath</name>
-			<value>file:/Users/jstoll/temp/Arduino-1.5.6-r2.app/Contents/Resources/Java/hardware/arduino/avr/libraries</value>
-		</variable>
-		<variable>
-			<name>ArduinoPinPath</name>
-			<value>file:/Users/jstoll/temp/Arduino-1.5.6-r2.app/Contents/Resources/Java/hardware/arduino/avr/variants</value>
-		</variable>
-		<variable>
-			<name>ArduinoPlatformPath</name>
-			<value>file:/Users/jstoll/temp/Arduino-1.5.6-r2.app/Contents/Resources/Java/hardware/arduino/avr</value>
-		</variable>
-	</variableList>
 </projectDescription>
