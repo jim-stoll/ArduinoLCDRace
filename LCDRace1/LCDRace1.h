@@ -15,7 +15,7 @@
 #include "EEPROM.h"
 //#include "MemoryFree.h"
 
-
+//#define CLR_HIGH_SCORES
 
 //end of add your includes here
 #ifdef __cplusplus

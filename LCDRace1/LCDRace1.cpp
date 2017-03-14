@@ -1,7 +1,5 @@
 #include "LCDRace1.h"
 
-//#define CLR_HIGH_SCORES
-
 //**TODO: don't repaint player marker, if hasn't moved from last position?
 
 #define I2C_ADDR      0x27 // I2C address of PCF8574A
@@ -347,7 +345,7 @@ bool checkHighScore() {
 void showSplash() {
 	  lcd.clear();
 	  lcd.setCursor(0,0);
-	  lcd.print("LCD Race!!");
+	  lcd.print("LCD Racer!!");
 	  lcd.setCursor(0,1);
 	  lcd.write(oncomingMarker);
 	  lcd.write(oncomingMarker);
